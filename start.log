@@ -1,0 +1,52 @@
+
+> start
+> next start
+
+▲ Next.js 16.2.6
+- Local:         http://localhost:3000
+- Network:       http://192.168.1.103:3000
+✓ Ready in 1529ms
+(node:18996) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+⨯ Error: Failed query: select "id", "agent_key", "action", "message", "level", "prospect_id", "meta", "created_at" from "activities" order by "activities"."created_at" desc limit $1
+params: 60
+    at g.queryWithCache (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:41523)
+    at async (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:49020)
+    at async l (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0gw0uiv._.js:1:1459)
+    at async d (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0gw0uiv._.js:1:5159)
+    at async l (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0gw0uiv._.js:1:6200)
+    at async Module.E [as handler] (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0gw0uiv._.js:1:7307) {
+  query: 'select "id", "agent_key", "action", "message", "level", "prospect_id", "meta", "created_at" from "activities" order by "activities"."created_at" desc limit $1',
+  params: [ 60 ],
+  [cause]: error: relation "activities" does not exist
+      at async (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:49235)
+      at async g.queryWithCache (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:41498)
+      at async (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:49020)
+      at async l (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0gw0uiv._.js:1:1459)
+      at async d (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0gw0uiv._.js:1:5159) {
+    length: 109,
+    severity: 'ERROR',
+    code: '42P01',
+    detail: undefined,
+    hint: undefined,
+    position: '98',
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'parse_relation.c',
+    line: '1498',
+    routine: 'parserOpenTable'
+  }
+}
