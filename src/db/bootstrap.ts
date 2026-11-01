@@ -164,15 +164,14 @@ let ready: Promise<void> | null = null;
 
 export function ensureSchema(): Promise<void> {
   if (!ready) {
-    ready = (async () => {
-      try {
-        await pool.query(DDL);
-      } catch (err) {
-        // Ne jamais bloquer le démarrage — sera retenté au prochain appel
-        console.error("[db bootstrap]", err instanceof Error ? err.message : err);
+    ready = pool.exec(DDL).then(
+      () => undefined,
+      (err: unknown) => {
         ready = null;
-      }
-    })();
+        console.error("[db bootstrap]", err instanceof Error ? err.message : err);
+        throw err;
+      },
+    );
   }
   return ready;
 }

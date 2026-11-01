@@ -1,37 +1,24 @@
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { PGlite } from "@electric-sql/pglite";
+import { drizzle } from "drizzle-orm/pglite";
+import * as schema from "./schema";
 
-const databaseUrl = process.env.DATABASE_URL;
+const dataDir =
+  process.env.PGLITE_DATA_DIR?.trim() || join(process.cwd(), ".local-data", "postgres");
 
-if (!databaseUrl) {
-  throw new Error("DATABASE_URL is required");
-}
-
-// SSL automatique pour les bases hébergées (Neon, Supabase, Vercel Postgres…)
-// et désactivé en local.
-function needsSsl(url: string): boolean {
-  if (/localhost|127\.0\.0\.1/.test(url)) return false;
-  if (/sslmode=disable/.test(url)) return false;
-  return true;
-}
+mkdirSync(dataDir, { recursive: true });
 
 const globalForDb = globalThis as typeof globalThis & {
-  __arenaNextJsPostgresqlPool?: Pool;
+  __gositePGlite?: PGlite;
 };
 
 export const pool =
-  globalForDb.__arenaNextJsPostgresqlPool ??
-  new Pool({
-    connectionString: databaseUrl,
-    ssl: needsSsl(databaseUrl) ? { rejectUnauthorized: false } : undefined,
-    max: 5, // serverless-friendly
-    idleTimeoutMillis: 20_000,
-    connectionTimeoutMillis: 10_000,
-    keepAlive: true,
-  });
+  globalForDb.__gositePGlite ??
+  new PGlite(dataDir);
 
 if (process.env.NODE_ENV !== "production") {
-  globalForDb.__arenaNextJsPostgresqlPool = pool;
+  globalForDb.__gositePGlite = pool;
 }
 
-export const db = drizzle(pool);
+export const db = drizzle({ client: pool, schema });
