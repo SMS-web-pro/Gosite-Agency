@@ -1,0 +1,16 @@
+name: Autopilot tick
+
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger /api/cron/tick
+        run: |
+          curl -fsS --max-time 280 \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "https://gosite-agency.vercel.app/api/cron/tick"
