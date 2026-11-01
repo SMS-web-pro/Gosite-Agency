@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
     {
       key: "autopilot", label: "Auto-pilote 24/7",
       status: s.AUTOPILOT === "true" ? "ok" : "warn",
-      detail: s.AUTOPILOT === "true" ? "Actif : cron horaire Vercel + cycles console + /tick Telegram." : "En pause — aucun cycle automatique ne tournera.",
+      detail: s.AUTOPILOT === "true" ? "Actif : cron quotidien Vercel (8h UTC) + cycles console + /tick Telegram." : "En pause — aucun cycle automatique ne tournera.",
       fixHref: "/settings", required: false,
     },
     {
