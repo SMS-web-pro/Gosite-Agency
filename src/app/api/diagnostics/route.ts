@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   }
 
   const checks: Check[] = [
-    { key: "database", label: "Base de données PostgreSQL", status: dbOk ? "ok" : "down", detail: dbOk ? "Connexion OK, schéma auto-migré." : "Connexion impossible — vérifiez DATABASE_URL.", fixHref: "/settings", required: true },
+    { key: "database", label: "Base de données PostgreSQL", status: dbOk ? "ok" : "down", detail: dbOk ? "Connexion OK, schéma auto-migré." : process.env.DATABASE_URL ? "Connexion impossible — vérifiez DATABASE_URL." : "Connexion impossible — vérifiez le dossier .local-data/postgres (ou PGLITE_DATA_DIR) et les permissions disque.", fixHref: "/settings", required: true },
     {
       key: "serper", label: "Serper.dev — Prospector",
       status: realActive.length ? (creditsLeft < 250 ? "warn" : "ok") : "down",

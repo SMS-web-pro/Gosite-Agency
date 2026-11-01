@@ -2,7 +2,7 @@
 // quelle base PostgreSQL (Neon, Supabase, Vercel Postgres, local) sans
 // exécuter drizzle-kit push manuellement. Exécuté une fois par cold start.
 
-import { pool } from "./index";
+import { execDdl } from "./index";
 
 const DDL = `
 CREATE TABLE IF NOT EXISTS agents (
@@ -164,7 +164,7 @@ let ready: Promise<void> | null = null;
 
 export function ensureSchema(): Promise<void> {
   if (!ready) {
-    ready = pool.exec(DDL).then(
+    ready = execDdl(DDL).then(
       () => undefined,
       (err: unknown) => {
         ready = null;
