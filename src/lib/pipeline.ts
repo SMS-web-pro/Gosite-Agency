@@ -370,15 +370,34 @@ export async function deployProspectSite(p: Prospect) {
     await logActivity({ agentKey: "deployer", action: "deploy_echec", message: `Déploiement Vercel échoué : ${res.error}`, level: "error", prospectId: p.id });
     throw new Error(res.error);
   }
-  await db.update(prospects).set({ deployedUrl: res.url, deployStatus: res.mode === "vercel" ? "live" : "simulated", siteSlug: slug, stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
+  // URL finale = sous-domaine de l'agence : {slug}.{AGENCY_DOMAIN}.
+  // Le lien de domaine est appliqué immédiatement après le déploiement ;
+  // l'URL *.vercel.app n'est qu'un repli temporaire si la liaison échoue.
+  let finalUrl = res.url;
+  let domainMode = "Vercel production";
+  if (res.mode === "vercel") {
+    const domainRes = await linkDomain(slug, "");
+    if (domainRes.ok) {
+      finalUrl = domainRes.url;
+      domainMode = "sous-domaine agence lié";
+    } else {
+      domainMode = `Vercel production — sous-domaine agence non lié (${domainRes.error})`;
+      await logActivity({
+        agentKey: "deployer", action: "domaine_agence_echec",
+        message: `Sous-domaine agence non lié (URL Vercel temporaire en place) : ${domainRes.error}`,
+        level: "warn", prospectId: p.id,
+      });
+    }
+  }
+  await db.update(prospects).set({ deployedUrl: finalUrl, deployStatus: res.mode === "vercel" ? "live" : "simulated", siteSlug: slug, stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("deployer", true);
   await logActivity({
     agentKey: "deployer", action: "deploiement",
-    message: `${slug} déployé → ${res.url} (${res.mode === "vercel" ? "Vercel production" : "simulation, preview sandbox active"}).`,
-    level: "success", prospectId: p.id, meta: { url: res.url, mode: res.mode },
+    message: `${slug} déployé → ${finalUrl} (${res.mode === "vercel" ? domainMode : "simulation, preview sandbox active"}).`,
+    level: "success", prospectId: p.id, meta: { url: finalUrl, mode: res.mode },
   });
-  await notifyTelegram(`🚀 <b>Deployer</b> — ${p.businessName}\nSite en ligne : ${res.url}${res.mode === "simulated" ? "\n(mode simulation : ajoutez VERCEL_TOKEN pour un vrai déploiement)" : ""}`);
-  return res;
+  await notifyTelegram(`🚀 <b>Deployer</b> — ${p.businessName}\nSite en ligne : ${finalUrl}${res.mode === "simulated" ? "\n(mode simulation : ajoutez VERCEL_TOKEN pour un vrai déploiement)" : ""}`);
+  return { ok: res.ok, url: finalUrl, mode: res.mode, error: res.error };
 }
 
 // ─────────────────────────── 7. SALER ───────────────────────────
