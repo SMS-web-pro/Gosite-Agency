@@ -50,3 +50,24 @@ params: 60
     routine: 'parserOpenTable'
   }
 }
+⨯ Error: Failed query: select "id", "key", "name", "role_title", "description", "icon", "color", "status", "is_live", "auto_pilot", "sort_order", "stats", "last_run_at", "last_error", "created_at", "updated_at" from "agents" where "agents"."key" = $1 limit $2
+params: prospector,1
+    at g.queryWithCache (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:41523)
+    at async (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:49020)
+    at async o (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0auyzcz._.js:85:5450)
+    at async u (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0davypy._.js:1:5550)
+    at async c (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0davypy._.js:1:10612)
+    at async l (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0davypy._.js:1:11653) {
+  query: 'select "id", "key", "name", "role_title", "description", "icon", "color", "status", "is_live", "auto_pilot", "sort_order", "stats", "last_run_at", "last_error", "created_at", "updated_at" from "agents" where "agents"."key" = $1 limit $2',
+  params: [ 'prospector', 1 ],
+  [cause]: Error: Connection terminated due to connection timeout
+      at async (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:49235)
+      at async g.queryWithCache (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:41498)
+      at async (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\_01cwuu7._.js:8:49020)
+      at async o (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0auyzcz._.js:85:5450)
+      at async u (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0davypy._.js:1:5550)
+      at async c (C:\Users\hp\Documents\GitHub\Gosite Agency\.next\server\chunks\[root-of-the-server]__0davypy._.js:1:10612) {
+    [cause]: Error: Connection terminated unexpectedly
+        at ignore-listed frames
+  }
+}
