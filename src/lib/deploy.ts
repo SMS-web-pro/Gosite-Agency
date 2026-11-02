@@ -3,6 +3,16 @@
 
 import { getSetting, allowSimulation } from "./settings";
 
+// Normalise le domaine agence : tolère les réglages stockés comme URL complète
+// ("https://gosite.digital/") et les ramène au domaine nu "gosite.digital".
+function normalizeAgencyDomain(value: string): string {
+  return value
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .toLowerCase();
+}
+
 export function slugifyId(name: string, id: number): string {
   const s = name
     .toLowerCase()
@@ -24,7 +34,7 @@ export type DeployResult = {
 export async function deployToVercel(slug: string, html: string): Promise<DeployResult> {
   const token = await getSetting("VERCEL_TOKEN");
   const teamId = await getSetting("VERCEL_TEAM_ID");
-  const agencyDomain = (await getSetting("AGENCY_DOMAIN")) || "gosite.digital";
+  const agencyDomain = normalizeAgencyDomain((await getSetting("AGENCY_DOMAIN")) || "gosite.digital");
 
   if (!token) {
     if (!(await allowSimulation())) {
@@ -60,7 +70,7 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
 export async function linkDomain(slug: string, domain: string): Promise<{ ok: boolean; url: string; mode: "vercel" | "simulated"; error?: string }> {
   const token = await getSetting("VERCEL_TOKEN");
   const teamId = await getSetting("VERCEL_TEAM_ID");
-  const agencyDomain = (await getSetting("AGENCY_DOMAIN")) || "gosite.digital";
+  const agencyDomain = normalizeAgencyDomain((await getSetting("AGENCY_DOMAIN")) || "gosite.digital");
   const finalDomain = domain || `${slug}.${agencyDomain}`;
 
   if (!token) {
