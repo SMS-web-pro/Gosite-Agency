@@ -9,6 +9,11 @@ import {
 } from "lucide-react";
 import { useApi, Toast, Stars, STAGE_LABELS, STAGE_COLORS, stageChipStyle } from "@/components/ui";
 
+type EmailArchiveRow = {
+  id: number; prospectId: number | null; toEmail: string; subject: string | null;
+  status: string; error: string | null; createdAt: string; businessName: string | null;
+};
+
 type ProspectDetail = {
   id: number; businessName: string; businessType: string; tagline: string | null; description: string | null;
   phone: string | null; email: string | null; emailStatus: string; emailDetail: string | null;
@@ -51,6 +56,29 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
   const [answer, setAnswer] = useState<string | null>(null);
   const [noteText, setNoteText] = useState("");
   const [notes, setNotes] = useState<{ id: number; author: string; body: string; createdAt: string }[]>([]);
+
+  const mails = useApi<{ emails: EmailArchiveRow[] }>(`/api/emails?prospectId=${id}`, 15000);
+  const [openMail, setOpenMail] = useState<{ id: number; bodyHtml: string | null; subject: string | null } | null>(null);
+
+  const openMailDetail = async (mailId: number) => {
+    if (openMail?.id === mailId) { setOpenMail(null); return; }
+    setOpenMail({ id: mailId, bodyHtml: null, subject: null });
+    const r = await fetch(`/api/emails/${mailId}`);
+    const j = (await r.json()) as { email?: { bodyHtml: string | null; subject: string | null }; error?: string };
+    if (j.email) setOpenMail({ id: mailId, bodyHtml: j.email.bodyHtml, subject: j.email.subject });
+  };
+
+  const backfillMails = async () => {
+    setBusy("backfill");
+    try {
+      const r = await fetch("/api/emails/backfill", { method: "POST" });
+      const j = (await r.json()) as { archived?: number; skipped?: number; missing?: number; error?: string };
+      if (j.error) setToast({ msg: `${j.error}`, kind: "err" });
+      else setToast({ msg: `Récupération Brevo : ${j.archived ?? 0} archivé(s), ${j.missing ?? 0} introuvable(s).`, kind: "ok" });
+      await mails.reload();
+      await reload();
+    } finally { setBusy(null); }
+  };
 
   const p = data?.prospect;
 
@@ -196,6 +224,49 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
         {p.rejectReason && (
           <div className="mt-4 px-4 py-3 rounded-xl text-[12.5px]" style={{ background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.3)", color: "var(--red)" }}>
             Rejeté par Validator : {p.rejectReason}
+          </div>
+        )}
+      </div>
+
+      {/* Emails envoyés (archive Saler) */}
+      <div className="card p-5 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="label-xs">Emails envoyés à ce lead</div>
+          {p.salesEmailId && (mails.data?.emails ?? []).length === 0 && (
+            <button onClick={backfillMails} disabled={busy !== null} className="btn-ghost text-[12px]" style={{ borderRadius: 8, padding: "5px 10px" }}>
+              {busy === "backfill" ? <Loader2 size={12} className="animate-spin" /> : "Récupérer depuis Brevo"}
+            </button>
+          )}
+        </div>
+        {(mails.data?.emails ?? []).length === 0 ? (
+          <div className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>
+            {p.salesEmailId ? "Envoyé avant la création de l'archive — contenu récupérable via le bouton ci-dessus." : "Aucun email envoyé pour l'instant."}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {(mails.data?.emails ?? []).map((m) => {
+              const color = m.status === "failed" ? "#ff5c7a" : m.status === "simulated" ? "#e5c651" : "var(--accent)";
+              return (
+                <div key={m.id} className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--border)" }}>
+                  <button onClick={() => openMailDetail(m.id)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-white/5 no-underline">
+                    <span className="chip text-[10px] shrink-0" style={{ color, borderColor: `${color}44` }}>{m.status === "failed" ? "Échec" : m.status === "simulated" ? "Simulé" : "Envoyé"}</span>
+                    <span className="text-[12.5px] font-medium text-white truncate min-w-0 flex-1">{m.subject ?? "(sans objet)"}</span>
+                    <span className="font-mono text-[10px] shrink-0" style={{ color: "var(--text-faint)" }}>
+                      {new Date(m.createdAt).toLocaleDateString("fr-FR")}
+                    </span>
+                  </button>
+                  {openMail?.id === m.id && (
+                    openMail.bodyHtml ? (
+                      <iframe sandbox="" srcDoc={openMail.bodyHtml} title={m.subject ?? "Email"} style={{ width: "100%", minHeight: 380, background: "#fff", border: 0 }} />
+                    ) : (
+                      <div className="p-3 text-[12px]" style={{ color: "var(--text-faint)" }}>
+                        {openMail.subject === null ? "Chargement du contenu…" : "Contenu non archivé — cliquez sur « Récupérer depuis Brevo »."}
+                      </div>
+                    )
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

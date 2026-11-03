@@ -72,6 +72,17 @@ CREATE TABLE IF NOT EXISTS activities (
   meta jsonb,
   created_at timestamp NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS emails (
+  id serial PRIMARY KEY,
+  prospect_id integer,
+  to_email text NOT NULL,
+  subject text,
+  body_html text,
+  status text NOT NULL DEFAULT 'sent',
+  message_id text,
+  error text,
+  created_at timestamp NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS settings (
   key text PRIMARY KEY,
   value text NOT NULL DEFAULT '',
@@ -158,6 +169,8 @@ CREATE INDEX IF NOT EXISTS idx_prospects_stage ON prospects (stage);
 CREATE INDEX IF NOT EXISTS idx_activities_created ON activities (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_rio_messages_created ON rio_messages (created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_lead_notes_prospect ON lead_notes (prospect_id);
+CREATE INDEX IF NOT EXISTS idx_emails_prospect ON emails (prospect_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_message ON emails (message_id);
 `;
 
 let ready: Promise<void> | null = null;

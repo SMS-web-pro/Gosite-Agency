@@ -95,6 +95,23 @@ export const activities = pgTable("activities", {
 });
 
 // ─────────────────────────────────────────────
+// EMAILS — archive de chaque email envoyé par Saler (objet + corps HTML
+// rendu + statut). Succès ET échecs, pour consultation dans l'app.
+// status: sent | failed | simulated | backfilled
+// ─────────────────────────────────────────────
+export const emails = pgTable("emails", {
+  id: serial("id").primaryKey(),
+  prospectId: integer("prospect_id"),
+  toEmail: text("to_email").notNull(),
+  subject: text("subject"),
+  bodyHtml: text("body_html"),
+  status: text("status").notNull().default("sent"),
+  messageId: text("message_id"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────
 // SETTINGS — encrypted-at-rest-by-env style key/value store
 // (Telegram, Brevo, Vercel, Whop, LLM omniroute, Serper defaults)
 // ─────────────────────────────────────────────

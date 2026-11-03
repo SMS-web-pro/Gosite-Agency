@@ -2,7 +2,7 @@
 // par son agent dédié. RIO reçoit une notification Telegram aux jalons clés.
 
 import { db } from "@/db";
-import { prospects, type Prospect } from "@/db/schema";
+import { prospects, emails, type Prospect } from "@/db/schema";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { ensureAgentsSeeded, markAgentRunEnd, markAgentRunStart } from "./agents";
@@ -424,16 +424,36 @@ export async function deployProspectSite(p: Prospect) {
 }
 
 // ─────────────────────────── 7. SALER ───────────────────────────
+// Chaque tentative d'envoi est archivée en base (succès ET échec) :
+// source de vérité consultable dans l'app, indépendante de Brevo.
 export async function contactProspect(p: Prospect) {
   await markAgentRunStart("saler");
   const preview = p.deployedUrl ?? "";
   if (!preview) throw new Error("Site non déployé");
   const res = await sendSalesEmail(p, preview);
+  // L'archivage ne doit jamais casser l'envoi : en cas de souci DB ce sont uniquement
+  // les logs qui manqueront, le flux Saler continue.
+  const tryArchive = async (row: typeof emails.$inferInsert) => {
+    try {
+      await db.insert(emails).values(row).onConflictDoNothing();
+    } catch (e) {
+      console.error("[archive email] non bloquant:", e instanceof Error ? e.message : e);
+    }
+  };
   if (!res.ok) {
+    await tryArchive({
+      prospectId: p.id, toEmail: p.email ?? "", subject: res.subject ?? null,
+      bodyHtml: res.bodyHtml ?? null, status: "failed", error: res.error ?? null,
+    });
     await markAgentRunEnd("saler", false, res.error);
     await logActivity({ agentKey: "saler", action: "envoi_echec", message: `Envoi à ${p.email} échoué : ${res.error}`, level: "error", prospectId: p.id });
     throw new Error(res.error);
   }
+  await tryArchive({
+    prospectId: p.id, toEmail: p.email ?? "", subject: res.subject ?? null,
+    bodyHtml: res.bodyHtml ?? null, status: res.simulated ? "simulated" : "sent",
+    messageId: res.messageId ?? null,
+  });
   await db.update(prospects).set({ salesEmailId: res.messageId ?? null, contactedAt: new Date(), stage: "contacted", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("saler", true);
   await logActivity({

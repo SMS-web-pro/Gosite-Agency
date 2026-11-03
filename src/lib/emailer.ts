@@ -69,7 +69,7 @@ function fallbackParagraphs(p: Prospect): string[] {
   ];
 }
 
-export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string };
+export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string; subject?: string; bodyHtml?: string };
 
 export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<SendResult> {
   const price = (await getSetting("OFFER_PRICE")) || "490";
@@ -82,14 +82,19 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
     : `Un site web prêt pour ${p.businessName} — à découvrir`;
   const paragraphs = (ai?.paragraphs && ai.paragraphs.length >= 2) ? ai.paragraphs : fallbackParagraphs(p);
   const cta = ai?.cta && ai.cta.length <= 28 ? ai.cta : "Découvrir votre site";
+  const bodyHtml = renderEmail({
+    businessName: p.businessName, previewUrl, price, currency,
+    subjectParagraphs: paragraphs, cta,
+  });
+  const content: SendResult = { ok: false, simulated: false, subject, bodyHtml };
 
-  if (!p.email) return { ok: false, simulated: false, error: "Email absent" };
+  if (!p.email) return { ...content, ok: false, simulated: false, error: "Email absent" };
   if (!(await brevoConfigured())) {
     const { allowSimulation } = await import("./settings");
     if (!(await allowSimulation())) {
-      return { ok: false, simulated: false, error: "Brevo non configuré (BREVO_API_KEY + email expéditeur dans Réglages). Aucun email simulé en production." };
+      return { ...content, ok: false, simulated: false, error: "Brevo non configuré (BREVO_API_KEY + email expéditeur dans Réglages). Aucun email simulé en production." };
     }
-    return { ok: true, simulated: true, messageId: `sim-${Date.now()}` };
+    return { ...content, ok: true, simulated: true, messageId: `sim-${Date.now()}` };
   }
 
   try {
@@ -103,17 +108,14 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
         sender: { email: await getSetting("BREVO_SENDER_EMAIL"), name: (await getSetting("BREVO_SENDER_NAME")) || "GoSite Digital" },
         to: [{ email: p.email, name: p.businessName }],
         subject,
-        htmlContent: renderEmail({
-          businessName: p.businessName, previewUrl, price, currency,
-          subjectParagraphs: paragraphs, cta,
-        }),
+        htmlContent: bodyHtml,
       }),
       signal: AbortSignal.timeout(20000),
     });
     const json = (await res.json()) as { messageId?: string; message?: string };
-    if (!res.ok) return { ok: false, simulated: false, error: json.message ?? `HTTP ${res.status}` };
-    return { ok: true, simulated: false, messageId: json.messageId };
+    if (!res.ok) return { ...content, ok: false, simulated: false, error: json.message ?? `HTTP ${res.status}` };
+    return { ...content, ok: true, simulated: false, messageId: json.messageId };
   } catch (err) {
-    return { ok: false, simulated: false, error: err instanceof Error ? err.message : "network" };
+    return { ...content, ok: false, simulated: false, error: err instanceof Error ? err.message : "network" };
   }
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  LayoutDashboard, Bot, KanbanSquare, Settings2, Send, Hexagon, Crown, Radio, MessagesSquare,
+  LayoutDashboard, Bot, KanbanSquare, Settings2, Send, Hexagon, Crown, Radio, MessagesSquare, Mail,
 } from "lucide-react";
 
 type Integrations = Record<string, boolean>;
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/rio", label: "Chat avec RIO", icon: MessagesSquare },
   { href: "/agents", label: "Agents IA", icon: Bot },
   { href: "/pipeline", label: "Pipeline Leads", icon: KanbanSquare },
+  { href: "/emails", label: "Emails envoyés", icon: Mail },
   { href: "/telegram", label: "Telegram Ops", icon: Send },
   { href: "/settings", label: "Réglages & API", icon: Settings2 },
 ];
