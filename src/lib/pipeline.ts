@@ -329,7 +329,7 @@ export async function buildProspectSite(p: Prospect) {
   await markAgentRunStart("coder");
   const sheet = p.clientData ?? buildClientSheet(p);
   const result = await buildSite(sheet);
-  const slug = p.siteSlug ?? slugifyId(p.businessName, p.id);
+  const slug = await decideSlug(p);
   await db.update(prospects).set({ siteHtml: result.html, siteSlug: slug, stage: "site_built", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("coder", true);
   await logActivity({
@@ -343,7 +343,7 @@ export async function buildProspectSite(p: Prospect) {
 // ─────────────────────────── 6. DEPLOYER ───────────────────────────
 // 🧠 Deployer choisit un sous-domaine court et crédible
 async function aiSlug(p: Prospect): Promise<string> {
-  const fallback = slugifyId(p.businessName, p.id);
+  const fallback = slugifyId(p.businessName);
   const { agentThinkJson } = await import("./agent-brain");
   const out = await agentThinkJson<{ slug: string }>({
     agent: "deployer",
@@ -357,13 +357,36 @@ async function aiSlug(p: Prospect): Promise<string> {
     temperature: 0.3,
   });
   const clean = (out?.slug ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
-  return clean.length >= 4 && clean.length <= 34 ? `c${p.id}-${clean}`.slice(0, 40) : fallback;
+  return clean.length >= 4 && clean.length <= 34 ? clean : fallback;
+}
+
+// Garantit l'unicité du siteSlug : sans le préfixe à id, deux commerces du même
+// nom peuvent aboutir au même sous-domaine — on suffixe en cas de collision.
+async function uniqueSiteSlug(candidate: string, selfId: number): Promise<string> {
+  const base = candidate.slice(0, 36);
+  let s = base;
+  let n = 2;
+  for (;;) {
+    const taken = await db
+      .select({ id: prospects.id })
+      .from(prospects)
+      .where(and(eq(prospects.siteSlug, s), ne(prospects.id, selfId)))
+      .limit(1);
+    if (!taken.length) return s;
+    s = `${base}-${n++}`.slice(0, 40);
+  }
+}
+
+// Slug final : les slugs d'avant la v1 étaient préfixés c{id}- — on converge
+// vers le nom nu avant d'assurer l'unicité en base.
+function decideSlug(p: Prospect): Promise<string> {
+  return uniqueSiteSlug(p.siteSlug?.replace(/^c\d+-/, "") ?? slugifyId(p.businessName), p.id);
 }
 
 export async function deployProspectSite(p: Prospect) {
   await markAgentRunStart("deployer");
   if (!p.siteHtml) throw new Error("Aucun site généré");
-  const slug = p.siteSlug ?? (await aiSlug(p));
+  const slug = await decideSlug(p);
   const res = await deployToVercel(slug, p.siteHtml);
   if (!res.ok) {
     await markAgentRunEnd("deployer", false, res.error);
@@ -458,7 +481,7 @@ export async function createPaymentLink(p: Prospect) {
 // ─────────────────────────── 9. DOMAINNER ───────────────────────────
 export async function linkProspectDomain(p: Prospect, customDomain?: string) {
   await markAgentRunStart("domainner");
-  const slug = p.siteSlug ?? slugifyId(p.businessName, p.id);
+  const slug = await decideSlug(p);
 
   // 🧠 Domainner propose un domaine crédible si aucun n'est imposé
   let target = customDomain ?? "";

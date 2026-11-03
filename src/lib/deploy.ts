@@ -13,7 +13,7 @@ function normalizeAgencyDomain(value: string): string {
     .toLowerCase();
 }
 
-export function slugifyId(name: string, id: number): string {
+export function slugifyId(name: string): string {
   const s = name
     .toLowerCase()
     .normalize("NFD")
@@ -21,7 +21,7 @@ export function slugifyId(name: string, id: number): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 28);
-  return `c${id}-${s || "site"}`;
+  return s || "site";
 }
 
 export type DeployResult = {
@@ -66,6 +66,63 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
   }
 }
 
+const CF_API = "https://api.cloudflare.com/client/v4";
+
+function registrableOf(domain: string): string {
+  const p = domain.split(".");
+  return p.length >= 2 ? p.slice(-2).join(".") : domain;
+}
+
+// Pousse automatiquement dans Cloudflare les TXT de vérification exigés par
+// Vercel, puis force la re-vérification. Sans jeton Cloudflare ou hors domaine
+// agence : étape ignorée silencieusement (déploiement reste opérationnel).
+async function autoVerifyDomain(domain: string, projectSlug: string, vercelToken: string, teamId: string | null): Promise<void> {
+  try {
+    const cfToken = (await getSetting("CLOUDFLARE_TOKEN")) || process.env.CLOUDFLARE_TOKEN;
+    if (!cfToken) return;
+    const zone = registrableOf(domain);
+    const zh = { Authorization: `Bearer ${cfToken}` };
+    const zres = await fetch(`${CF_API}/zones?name=${encodeURIComponent(zone)}`, { headers: zh, signal: AbortSignal.timeout(15000) });
+    const zoneId = ((await zres.json()) as { result?: { id: string }[] }).result?.[0]?.id;
+    if (!zoneId) return;
+
+    const qs = teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
+    const vh = { Authorization: `Bearer ${vercelToken}` };
+    const dres = await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}${qs}`, { headers: vh, signal: AbortSignal.timeout(15000) });
+    const dj = (await dres.json()) as { verified?: boolean; verification?: { type?: string; domain: string; value: string; reason?: string }[] };
+    const pending = (dj.verification || []).filter((v) => v.value && /domain-verify/.test(v.value));
+    if (!pending.length) return;
+
+    const er = await fetch(`${CF_API}/zones/${zoneId}/dns_records?type=TXT&name=${encodeURIComponent(pending[0].domain)}`, { headers: zh, signal: AbortSignal.timeout(15000) });
+    const existing = new Set(((await er.json()) as { result?: { content: string }[] }).result?.map((r) => r.content) || []);
+
+    for (const v of pending) {
+      if (existing.has(v.value)) continue;
+      await fetch(`${CF_API}/zones/${zoneId}/dns_records`, {
+        method: "POST",
+        headers: { ...zh, "Content-Type": "application/json" },
+        body: JSON.stringify({ type: v.type || "TXT", name: v.domain, content: v.value, ttl: 60, proxied: false }),
+        signal: AbortSignal.timeout(15000),
+      });
+    }
+    // Toutes les valeurs poussées : Vercel re-vérifie (poll court + appel best-effort).
+    await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}/verify${qs}`, { method: "POST", headers: vh, signal: AbortSignal.timeout(15000) }).catch(() => {});
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const c = await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}${qs}`, { headers: vh, signal: AbortSignal.timeout(15000) });
+      const cj = (await c.json()) as { verified?: boolean };
+      if (cj.verified) {
+        console.log(`[deployer] ${domain} vérifié et SSL en cours (${(i + 1) * 5}s)`);
+        return;
+      }
+      await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}/verify${qs}`, { method: "POST", headers: vh, signal: AbortSignal.timeout(15000) }).catch(() => {});
+    }
+    console.warn(`[deployer] ${domain} lié mais vérification DNS non confirmée dans les 20s (elle aboutira toute seule)`);
+  } catch (err) {
+    console.warn("[deployer] auto-vérification DNS impossible (non bloquant):", err instanceof Error ? err.message : err);
+  }
+}
+
 // Domainner — lie un domaine personnalisé au projet Vercel
 export async function linkDomain(slug: string, domain: string): Promise<{ ok: boolean; url: string; mode: "vercel" | "simulated"; error?: string }> {
   const token = await getSetting("VERCEL_TOKEN");
@@ -91,6 +148,7 @@ export async function linkDomain(slug: string, domain: string): Promise<{ ok: bo
       const json = await res.json().catch(() => ({}));
       return { ok: false, url: "", mode: "vercel", error: (json as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}` };
     }
+    await autoVerifyDomain(finalDomain, slug, token, teamId);
     return { ok: true, url: `https://${finalDomain}`, mode: "vercel" };
   } catch (err) {
     return { ok: false, url: "", mode: "vercel", error: err instanceof Error ? err.message : "network" };
