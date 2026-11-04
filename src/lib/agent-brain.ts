@@ -13,6 +13,7 @@ import { and, desc, eq, sql } from "drizzle-orm";
 import { getSetting } from "./settings";
 import { logActivity } from "./activity";
 import { llmErrorDetail } from "./llm-error";
+import { fetchWithRetry } from "./llm-fetch";
 
 export type AgentKey =
   | "prospector" | "validator" | "emailor" | "mapper" | "coder"
@@ -187,23 +188,26 @@ FORMAT DE SORTIE IMPÉRATIF :
   const t0 = Date.now();
 
   try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: `${params.instruction}\n\nDONNÉES :\n${params.input}` },
-        ],
-        temperature: params.temperature ?? 0.5,
-        // Marge de sécurité : une sortie JSON tronquée est inexploitable
-        max_tokens: params.json ? Math.max(params.maxTokens ?? 900, 700) : (params.maxTokens ?? 900),
-        // NOTE : volontairement pas de `response_format` — certains routeurs
-        // (dont omniroute) corrompent la sortie avec ce paramètre.
-      }),
-      signal: AbortSignal.timeout(120000),
-    });
+    const res = await fetchWithRetry(
+      `${baseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: `${params.instruction}\n\nDONNÉES :\n${params.input}` },
+          ],
+          temperature: params.temperature ?? 0.5,
+          // Marge de sécurité : une sortie JSON tronquée est inexploitable
+          max_tokens: params.json ? Math.max(params.maxTokens ?? 900, 700) : (params.maxTokens ?? 900),
+          // NOTE : volontairement pas de `response_format` — certains routeurs
+          // (dont omniroute) corrompent la sortie avec ce paramètre.
+        }),
+      },
+      { timeoutMs: 30000, retries: 1, delayMs: 800 }
+    );
     if (!res.ok) {
       await trackCall(params.agent, params.task, false, Date.now() - t0, 0);
       const detail = llmErrorDetail(res.status, await res.text().catch(() => ""));

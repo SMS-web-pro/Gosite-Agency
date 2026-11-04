@@ -9,6 +9,7 @@ import { desc } from "drizzle-orm";
 import { getSetting } from "./settings";
 import { TOOL_SCHEMAS, executeTool, type ToolResult } from "./rio-tools";
 import { llmErrorDetail } from "./llm-error";
+import { fetchWithRetry } from "./llm-fetch";
 
 export type RioTurn = {
   reply: string;
@@ -68,18 +69,21 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
   const apiKey = await getSetting("LLM_API_KEY");
   const model = (await getSetting("LLM_MODEL")) || "gpt-4o-mini";
   try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages,
-        ...(withTools ? { tools: TOOL_SCHEMAS, tool_choice: "auto" } : {}),
-        temperature: 0.4,
-        max_tokens: 1200,
-      }),
-      signal: AbortSignal.timeout(90000),
-    });
+    const res = await fetchWithRetry(
+      `${baseUrl}/chat/completions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          messages,
+          ...(withTools ? { tools: TOOL_SCHEMAS, tool_choice: "auto" } : {}),
+          temperature: 0.4,
+          max_tokens: 1200,
+        }),
+      },
+      { timeoutMs: 20000, retries: 1, delayMs: 800 }
+    );
     if (!res.ok) {
       return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };
     }
