@@ -157,22 +157,25 @@ export async function agentThink(params: {
   json?: boolean;
   maxTokens?: number;
   temperature?: number;
+  /** Force la langue de la réponse (défaut: français). */
+  lang?: "fr" | "en";
 }): Promise<string | null> {
   if (!(await brainOnline())) return null;
   await ensureCoreSkills();
 
   const mind = AGENT_MINDS[params.agent] ?? { role: "agent spécialisé", mission: "Accomplir sa tâche avec rigueur." };
   const context = await buildContext(params.agent);
+  const writingLang = params.lang === "en" ? "EN ANGLAIS" : "en français";
   const system = `Tu es ${params.agent.toUpperCase()}, ${mind.role}, agent autonome de l'agence GoSite Digital.
 MISSION : ${mind.mission}
-Tu réponds toujours en français, de façon concise et directement exploitable.${context}${
+Tu réponds toujours ${writingLang}, de façon concise et directement exploitable.${context}${
     params.json
       ? `
 
 FORMAT DE SORTIE IMPÉRATIF :
 - Ta réponse commence par { et se termine par }.
 - Rien avant, rien après : pas de phrase d'introduction, pas de balises markdown, pas de \`\`\`.
-- Toutes les valeurs textuelles sont rédigées EN FRANÇAIS.
+- Toutes les valeurs textuelles sont rédigées ${writingLang.toUpperCase()} : AUCUN mot d'une autre langue (pas de mélange fr/en).
 - JSON strict : guillemets doubles, pas de virgule finale, pas de commentaire.`
       : ""
   }`;
@@ -285,8 +288,10 @@ export async function agentThinkJson<T>(params: {
   input: string;
   maxTokens?: number;
   temperature?: number;
+  /** Force la langue des valeurs texte de la sortie (défaut: français). */
+  lang?: "fr" | "en";
 }): Promise<T | null> {
-  const raw = await agentThink({ ...params, json: true });
+  const raw = await agentThink({ ...params, json: true, lang: params.lang });
   if (!raw) return null;
   const parsed = parseLooseJson<T>(raw);
   if (!parsed) {

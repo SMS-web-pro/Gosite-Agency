@@ -394,8 +394,15 @@ export const LOCAL_NAMES: Record<string, string[]> = {
 };
 
 export function localeFor(country: string): { lang: string; dir: string; locale: string; currency: string; priceRange: string } {
-  if (country.toLowerCase().includes("maroc")) {
+  const c = country.toLowerCase().replace(/\./g, " ");
+  if (c.includes("maroc")) {
     return { lang: "fr", dir: "ltr", locale: "fr-MA", currency: "MAD", priceRange: "$$" };
+  }
+  if (/\b(usa|us|united states|america)\b/.test(c) || /états[-\s]?unis|etats[-\s]?unis/.test(c)) {
+    return { lang: "en", dir: "ltr", locale: "en-US", currency: "USD", priceRange: "$$" };
+  }
+  if (/\b(uk|united kingdom|england|great britain|gb)\b/.test(c) || /royaume[-\s]?uni/.test(c)) {
+    return { lang: "en", dir: "ltr", locale: "en-GB", currency: "GBP", priceRange: "$$" };
   }
   return { lang: "fr", dir: "ltr", locale: "fr-FR", currency: "EUR", priceRange: "$$" };
 }
