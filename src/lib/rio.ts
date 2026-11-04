@@ -8,6 +8,7 @@ import { rioMessages } from "@/db/schema";
 import { desc } from "drizzle-orm";
 import { getSetting } from "./settings";
 import { TOOL_SCHEMAS, executeTool, type ToolResult } from "./rio-tools";
+import { llmErrorDetail } from "./llm-error";
 
 export type RioTurn = {
   reply: string;
@@ -61,7 +62,8 @@ async function llmReady(): Promise<boolean> {
 async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
   content: string | null;
   toolCalls: { id: string; name: string; args: Record<string, unknown> }[];
-} | null> {
+  error: string | null;
+}> {
   const baseUrl = (await getSetting("LLM_BASE_URL")).replace(/\/+$/, "");
   const apiKey = await getSetting("LLM_API_KEY");
   const model = (await getSetting("LLM_MODEL")) || "gpt-4o-mini";
@@ -78,20 +80,24 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
       }),
       signal: AbortSignal.timeout(90000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };
+    }
     const json = (await res.json()) as {
       choices?: { message?: { content?: string | null; tool_calls?: { id: string; function: { name: string; arguments: string } }[] } }[];
     };
     const m = json.choices?.[0]?.message;
-    if (!m) return null;
+    if (!m) return { content: null, toolCalls: [], error: "Le serveur LLM a renvoyé une réponse vide ou illisible." };
     const toolCalls = (m.tool_calls ?? []).map((t) => {
       let args: Record<string, unknown> = {};
       try { args = JSON.parse(t.function.arguments || "{}"); } catch { /* noop */ }
       return { id: t.id, name: t.function.name, args };
     });
-    return { content: m.content ?? null, toolCalls };
-  } catch {
-    return null;
+    return { content: m.content ?? null, toolCalls, error: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "erreur réseau";
+    const code = err instanceof Error && err.cause && typeof err.cause === "object" && "code" in err.cause ? String((err.cause as { code?: string }).code) : "";
+    return { content: null, toolCalls: [], error: `Serveur LLM injoignable — ${msg}${code ? ` (${code})` : ""}` };
   }
 }
 
@@ -112,7 +118,7 @@ async function remember(channel: string, role: string, content: string, toolCall
 
 /* ───────────── Parseur d'intentions (secours sans LLM) ───────────── */
 
-async function rulesFallback(text: string): Promise<RioTurn> {
+async function rulesFallback(text: string, llmError?: string): Promise<RioTurn> {
   const t = text.toLowerCase();
   const calls: { name: string; args: Record<string, unknown>; summary: string }[] = [];
   const run = async (name: string, args: Record<string, unknown>) => {
@@ -176,8 +182,11 @@ async function rulesFallback(text: string): Promise<RioTurn> {
   }
   // Par défaut : état général
   const r = await run("get_dashboard", {});
+  const note = llmError
+    ? `(Mode secours : le serveur LLM est en panne — ${llmError}. Je réponds avec mes réflexes en attendant ; vérifiez le serveur LLM ou ses crédits.)`
+    : "(Mode secours : le LLM omniroute n'est pas configuré, je fonctionne avec mes réflexes. Renseigne LLM_BASE_URL et LLM_API_KEY dans Réglages pour que je raisonne pleinement.)";
   return done(
-    `${r.summary}\n\n(Mode secours : le LLM omniroute n'est pas configuré, je fonctionne avec mes réflexes. Renseigne LLM_BASE_URL et LLM_API_KEY dans Réglages pour que je raisonne pleinement.)`,
+    `${r.summary}\n\n${note}`,
     calls,
   );
 
@@ -212,8 +221,8 @@ export async function askRio(userText: string, channel: "web" | "telegram" = "we
   // Jusqu'à 4 tours d'outils
   for (let round = 0; round < 4; round++) {
     const res = await callLlm(messages, true);
-    if (!res) {
-      const turn = await rulesFallback(userText);
+    if (res.error) {
+      const turn = await rulesFallback(userText, res.error);
       await remember(channel, "assistant", turn.reply);
       return turn;
     }
@@ -242,7 +251,7 @@ export async function askRio(userText: string, channel: "web" | "telegram" = "we
 
   // Dernier tour sans outils pour forcer une synthèse
   const final = await callLlm(messages, false);
-  const reply = (final?.content ?? "").trim() || executed.map((e) => `• ${e.summary}`).join("\n") || "Action effectuée.";
+  const reply = (final.content ?? "").trim() || executed.map((e) => `• ${e.summary}`).join("\n") || "Action effectuée.";
   await remember(channel, "assistant", reply, executed.map((c) => ({ name: c.name, args: c.args, result: c.summary })));
   return { reply, toolCalls: executed, engine: "llm" };
 }

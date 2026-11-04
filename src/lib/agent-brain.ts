@@ -12,6 +12,7 @@ import { agentSkills, agentLearnings, aiCalls, activities } from "@/db/schema";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getSetting } from "./settings";
 import { logActivity } from "./activity";
+import { llmErrorDetail } from "./llm-error";
 
 export type AgentKey =
   | "prospector" | "validator" | "emailor" | "mapper" | "coder"
@@ -205,6 +206,8 @@ FORMAT DE SORTIE IMPÉRATIF :
     });
     if (!res.ok) {
       await trackCall(params.agent, params.task, false, Date.now() - t0, 0);
+      const detail = llmErrorDetail(res.status, await res.text().catch(() => ""));
+      try { await logActivity({ agentKey: params.agent, action: "llm_echec", message: `Appel LLM échoué — ${detail}`, level: "warn" }); } catch { /* non bloquant */ }
       return null;
     }
     const json = (await res.json()) as {
@@ -214,8 +217,11 @@ FORMAT DE SORTIE IMPÉRATIF :
     const content = json.choices?.[0]?.message?.content ?? null;
     await trackCall(params.agent, params.task, Boolean(content), Date.now() - t0, json.usage?.total_tokens ?? 0);
     return content;
-  } catch {
+  } catch (err) {
     await trackCall(params.agent, params.task, false, Date.now() - t0, 0);
+    const msg = err instanceof Error ? err.message : "erreur réseau";
+    const code = err instanceof Error && err.cause && typeof err.cause === "object" && "code" in err.cause ? String((err.cause as { code?: string }).code) : "";
+    try { await logActivity({ agentKey: params.agent, action: "llm_echec", message: `LLM injoignable — ${msg}${code ? ` (${code})` : ""}`, level: "warn" }); } catch { /* non bloquant */ }
     return null;
   }
 }
