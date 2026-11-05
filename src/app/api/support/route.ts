@@ -5,14 +5,28 @@ import { eq } from "drizzle-orm";
 import { chatCompletion, llmConfigured } from "@/lib/llm";
 import { logActivity } from "@/lib/activity";
 import { markAgentRunEnd, markAgentRunStart } from "@/lib/agents";
+import { addDoNotContact, looksLikeOptOut } from "@/lib/dnc";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
-  const body = (await req.json().catch(() => ({}))) as { prospectId?: number; question?: string };
+  const body = (await req.json().catch(() => ({}))) as { prospectId?: number; question?: string; email?: string };
   const question = (body.question ?? "").trim();
   if (!question) return NextResponse.json({ error: "question requise" }, { status: 400 });
+
+  // Opt-out : une demande de désinscription est honorée immédiatement,
+  // avant toute autre considération.
+  if (looksLikeOptOut(question)) {
+    const email = (body.email ?? "").trim();
+    if (email) await addDoNotContact(email, "support");
+    else if (body.prospectId) {
+      const rows = await db.select({ email: prospects.email }).from(prospects).where(eq(prospects.id, body.prospectId)).limit(1);
+      if (rows[0]?.email) await addDoNotContact(rows[0].email, "support");
+    }
+    await logActivity({ agentKey: "support", action: "desinscription", message: `Désinscription demandée (${question.slice(0, 60)}…) — ajoutée à do-not-contact.`, level: "warn", prospectId: body.prospectId ?? null });
+    return NextResponse.json({ ok: true, answer: "C'est bien noté : vous ne recevrez plus aucun message de notre part. Désolé pour la gêne occasionnée.", engine: "canned" });
+  }
 
   await markAgentRunStart("support");
   let p = null;

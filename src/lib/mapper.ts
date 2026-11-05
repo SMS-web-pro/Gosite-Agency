@@ -26,7 +26,9 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
 
   const description =
     p.description ||
-    `${name} — ${niche.label.toLowerCase()} à ${city}. Note Google ${rating.toFixed(1)}/5 sur la base de ${reviews} avis vérifiés. ${niche.trustBadges.join(" · ")}.`;
+    (rating > 0
+      ? `${name} — ${niche.label.toLowerCase()} à ${city}. Note Google ${rating.toFixed(1)}/5 sur la base de ${reviews} avis publics. ${niche.trustBadges.join(" · ")}.`
+      : `${name} — ${niche.label.toLowerCase()} à ${city}. ${niche.trustBadges.join(" · ")}.`);
 
   return {
     BUSINESS_NAME: name,
@@ -47,9 +49,10 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
       : `https://maps.google.com/maps?q=${queryFallback}&output=embed`,
     LAT: String(lat),
     LNG: String(lng),
-    HOURS_WEEKDAY: hours.weekday ?? "Lun–Ven 9h00 – 19h00",
-    HOURS_SAT: hours.sat ?? "Sam 9h00 – 18h00",
-    HOURS_SUN: hours.sun ?? "Dim Fermé",
+    // Horaires : UNIQUEMENT les données réelles — rien n'est inventé si absentes.
+    HOURS_WEEKDAY: hours.weekday ?? "",
+    HOURS_SAT: hours.sat ?? "",
+    HOURS_SUN: hours.sun ?? "",
     GOOGLE_RATING: rating.toFixed(1),
     REVIEW_COUNT: reviews >= 50 ? `${Math.floor(reviews / 10) * 10}+` : String(reviews),
     LANG: loc.lang,
@@ -63,7 +66,7 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
     DISPLAY_FONT: niche.displayFont,
     ACCESSIBILITY: "true",
     PARKING: "street",
-    PAYMENT: "Espèces, Cartes",
+    PAYMENT: "",
     INSTAGRAM: "none",
     FACEBOOK: "none",
     HERO_IMAGE_URL: niche.heroImage,
@@ -82,7 +85,7 @@ export function validateSheet(d: Record<string, string>): { ok: boolean; missing
   const required = [
     "BUSINESS_NAME", "BUSINESS_TYPE", "TAGLINE", "DESCRIPTION", "PHONE", "PHONE_LINK",
     "EMAIL", "ADDRESS", "CITY", "COUNTRY", "CURRENCY", "MAPS_LINK", "MAPS_EMBED",
-    "LAT", "LNG", "HOURS_WEEKDAY", "GOOGLE_RATING", "REVIEW_COUNT", "LANG", "LOCALE",
+    "LAT", "LNG", "GOOGLE_RATING", "REVIEW_COUNT", "LANG", "LOCALE",
     "SCHEMA_TYPE", "PRIMARY_COLOR", "ACCENT_COLOR", "NEUTRAL_BG", "STYLE", "HERO_IMAGE_URL",
   ];
   const missing = required.filter((k) => !d[k] || d[k].trim() === "" || d[k].startsWith("["));

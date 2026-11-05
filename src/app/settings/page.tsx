@@ -66,6 +66,7 @@ const GROUPS: Group[] = [
     desc: "Le domaine des sous-domaines clients et le montant annoncé par Saler dans l'email d'offre.",
     fields: [
       { key: "AGENCY_DOMAIN", label: "Domaine agence", placeholder: "gosite.digital" },
+      { key: "AGENCY_ADDRESS", label: "Adresse légale (footer emails)", placeholder: "12 rue Exemple, 75000 Ville", hint: "Mention obligatoire dans les emails commerciaux (CAN-SPAM / LCEN)" },
       { key: "OFFER_PRICE", label: "Prix de l'offre", placeholder: "490" },
       { key: "OFFER_CURRENCY", label: "Devise", placeholder: "EUR / MAD / USD" },
     ],

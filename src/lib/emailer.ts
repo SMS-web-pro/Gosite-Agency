@@ -203,6 +203,7 @@ function renderEmail(opts: {
   price: string;
   currency: string;
   lang: Lang;
+  agencyAddress?: string;
 }): string {
   const pack = LANG_PACKS[opts.lang];
   const { copy, p } = opts;
@@ -253,7 +254,7 @@ function renderEmail(opts: {
     <p style="margin:22px 0 0 0;font-size:14px;line-height:1.6;color:#22262e">${pack.signature}</p>
   </td></tr>
   <tr><td style="padding:18px 36px 26px 36px;font-size:11px;line-height:1.6;color:#9aa0ab">
-    GoSite Digital · gosite.digital<br>${esc(pack.stopLine)}
+    GoSite Digital · gosite.digital${opts.agencyAddress ? ` · ${esc(opts.agencyAddress)}` : ""}<br>${esc(pack.stopLine)}
   </td></tr>
 </table>
 </td></tr>
@@ -262,11 +263,38 @@ function renderEmail(opts: {
 </html>`;
 }
 
+/* ─────────── Version texte (accessibilité + délivrabilité) ─────────── */
+
+function renderEmailText(opts: { p: Prospect; copy: SalesCopy; previewUrl: string; price: string; currency: string; lang: Lang }): string {
+  const pack = LANG_PACKS[opts.lang];
+  const { copy, p } = opts;
+  const lines = [
+    copy.hook,
+    "",
+    ...copy.bullets.map((b) => `• ${b}`),
+    "",
+    `${pack.offerIntro} ${p.businessName}`,
+    `${opts.price} ${opts.currency} — ${pack.offerAll}`,
+    `${pack.offerDays}. ${opts.previewUrl}`,
+    "",
+    copy.closing,
+    "",
+    "GoSite Digital — gosite.digital",
+    pack.stopLine,
+  ];
+  return lines.join("\n");
+}
+
 /* ─────────── Envoi ─────────── */
 
 export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string; subject?: string; bodyHtml?: string };
 
 export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<SendResult> {
+  // Opt-out : aucune copie, aucun appel LLM pour une adresse désinscrite.
+  const { isDoNotContact } = await import("./dnc");
+  if (await isDoNotContact(p.email)) {
+    return { ok: false, simulated: false, error: `do_not_contact : ${p.email} est désinscrit, envoi bloqué` };
+  }
   const price = (await getSetting("OFFER_PRICE")) || "490";
   const sheet = (p.clientData ?? {}) as Record<string, string>;
   const sheetCurrency = typeof sheet.CURRENCY === "string" ? sheet.CURRENCY.trim().toUpperCase() : "";
@@ -276,7 +304,10 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
   // 🧠 Copy en 2 passes, avec repli complet par langue (jamais de blocage)
   const ai = await aiSalesCopy(p, price, currency, lang);
   const copy = coerceCopy(ai, lang, p);
-  const bodyHtml = renderEmail({ p, copy, previewUrl, price, currency, lang });
+  const senderEmail = await getSetting("BREVO_SENDER_EMAIL");
+  const agencyAddress = await getSetting("AGENCY_ADDRESS");
+  const bodyHtml = renderEmail({ p, copy, previewUrl, price, currency, lang, agencyAddress });
+  const bodyText = renderEmailText({ p, copy, previewUrl, price, currency, lang });
   const content: SendResult = { ok: false, simulated: false, subject: copy.subject, bodyHtml };
 
   if (!p.email) return { ...content, ok: false, simulated: false, error: "Email absent" };
@@ -296,10 +327,17 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        sender: { email: await getSetting("BREVO_SENDER_EMAIL"), name: (await getSetting("BREVO_SENDER_NAME")) || "GoSite Digital" },
+        sender: { email: senderEmail, name: (await getSetting("BREVO_SENDER_NAME")) || "GoSite Digital" },
         to: [{ email: p.email, name: p.businessName }],
+        replyTo: { email: senderEmail },
         subject: copy.subject,
         htmlContent: bodyHtml,
+        textContent: bodyText,
+        headers: {
+          // Désinscription standard (RFC 2369) : honore la promesse STOP du footer.
+          "List-Unsubscribe": `<mailto:${senderEmail}?subject=STOP>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
       }),
       signal: AbortSignal.timeout(20000),
     });

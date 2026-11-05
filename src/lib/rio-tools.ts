@@ -177,6 +177,21 @@ export const TOOL_SCHEMAS = [
   {
     type: "function" as const,
     function: {
+      name: "block_email",
+      description: "Ajoute une adresse email à la liste do-not-contact (désinscription définitive, ex. client qui répond STOP). Plus aucun email commercial ne sera envoyé vers cette adresse.",
+      parameters: {
+        type: "object",
+        properties: {
+          email: { type: "string", description: "Adresse email à bloquer" },
+          reason: { type: "string", description: "Motif court, ex. stop, réponse négative" },
+        },
+        required: ["email"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
       name: "get_activity",
       description: "Derniers événements du journal d'opérations (qui a fait quoi, erreurs incluses). Utile pour diagnostiquer un problème.",
       parameters: { type: "object", properties: { limit: { type: "number" }, level: { type: "string", description: "info|success|warn|error" } }, required: [] },
@@ -361,6 +376,15 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
     case "validate_all": {
       const r = await runBulkValidation();
       return { ok: true, summary: `Validator : ${r.validated} qualifiés, ${r.rejected} rejetés sur ${r.checked} leads examinés.`, data: r };
+    }
+
+    case "block_email": {
+      const email = str(args.email).trim();
+      if (!email) return { ok: false, summary: "Adresse email requise." };
+      const { addDoNotContact } = await import("./dnc");
+      await addDoNotContact(email, "rio", str(args.reason) || "stop");
+      await logActivity({ agentKey: "rio", action: "do_not_contact", message: `RIO a ajouté ${email} à la liste do-not-contact.`, level: "warn" });
+      return { ok: true, summary: `${email} ne recevra plus aucun email.` };
     }
 
     case "control_agent": {

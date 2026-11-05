@@ -430,7 +430,33 @@ export async function contactProspect(p: Prospect) {
   await markAgentRunStart("saler");
   const preview = p.deployedUrl ?? "";
   if (!preview) throw new Error("Site non déployé");
-  const res = await sendSalesEmail(p, preview);
+  // Opt-out : on ne contacte jamais une adresse désinscrite.
+  const { isDoNotContact } = await import("./dnc");
+  if (await isDoNotContact(p.email)) {
+    await markAgentRunEnd("saler", false, "do_not_contact");
+    await logActivity({ agentKey: "saler", action: "envoi_bloque", message: `Envoi bloqué : ${p.email} est sur la liste do-not-contact.`, level: "warn", prospectId: p.id });
+    throw new Error("do_not_contact");
+  }
+  // Réservation atomique : un seul appel peut passer de "deployed" à "contacting".
+  // Tout appel concurrent (cron + RIO + manuel) repart sans envoyer, ce qui
+  // garantit zéro double-email au commerçant.
+  const claimed = await db.update(prospects)
+    .set({ stage: "contacting", updatedAt: new Date() })
+    .where(and(eq(prospects.id, p.id), eq(prospects.stage, "deployed")))
+    .returning();
+  if (claimed.length === 0) {
+    await markAgentRunEnd("saler", false, "deja_contacte");
+    throw new Error("Lead déjà contacté ou en cours d'envoi");
+  }
+  let res: Awaited<ReturnType<typeof sendSalesEmail>>;
+  try {
+    res = await sendSalesEmail(p, preview);
+  } catch (err) {
+    // Libère le lead pour une nouvelle tentative ultérieure.
+    await db.update(prospects).set({ stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
+    await markAgentRunEnd("saler", false, err instanceof Error ? err.message : "erreur envoi");
+    throw err;
+  }
   // L'archivage ne doit jamais casser l'envoi : en cas de souci DB ce sont uniquement
   // les logs qui manqueront, le flux Saler continue.
   const tryArchive = async (row: typeof emails.$inferInsert) => {
@@ -445,6 +471,8 @@ export async function contactProspect(p: Prospect) {
       prospectId: p.id, toEmail: p.email ?? "", subject: res.subject ?? null,
       bodyHtml: res.bodyHtml ?? null, status: "failed", error: res.error ?? null,
     });
+    // Libère le lead pour une nouvelle tentative (ex. panne LLM/Brevo temporaire).
+    await db.update(prospects).set({ stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
     await markAgentRunEnd("saler", false, res.error);
     await logActivity({ agentKey: "saler", action: "envoi_echec", message: `Envoi à ${p.email} échoué : ${res.error}`, level: "error", prospectId: p.id });
     throw new Error(res.error);

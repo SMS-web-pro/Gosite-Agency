@@ -228,6 +228,18 @@ export const leadNotes = pgTable("lead_notes", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// ─────────────────────────────────────────────
+// DO NOT CONTACT — opt-out définitif (STOP, désinscription)
+// Aucun email commercial ne doit partir vers une adresse présente ici.
+// ─────────────────────────────────────────────
+export const doNotContact = pgTable("do_not_contact", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  reason: text("reason").notNull().default("stop"),
+  source: text("source").notNull().default("manual"), // manual | stop_reply | rio | support
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Agent = typeof agents.$inferSelect;
 export type RioMessage = typeof rioMessages.$inferSelect;
 export type Objective = typeof objectives.$inferSelect;

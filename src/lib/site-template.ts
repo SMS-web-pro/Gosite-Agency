@@ -1,7 +1,7 @@
 // Coder — moteur de secours : génère un site vitrine complet, monofichier,
 // fidèle au cahier des charges (16 sections, animations, SEO local, 0 placeholder).
 
-import { findNiche, LOCAL_NAMES } from "./niches";
+import { findNiche } from "./niches";
 
 type D = Record<string, string>;
 
@@ -21,24 +21,14 @@ function alpha(hex: string, a: number): string {
   const [r, g, b] = hexToRgb(hex);
   return `rgba(${r},${g},${b},${a})`;
 }
-function esc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+function esc(s: unknown): string {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-const REVIEW_TEMPLATES = [
-  (s: string, c: string) => `J'avais repéré le ${s} grâce aux avis Google et je comprends la note. Travail soigné, délais tenus et explications claires du début à la fin. Je recommande à ${c} les yeux fermés.`,
-  (s: string) => `Service impeccable du premier appel jusqu'à la dernière finition. Le ${s} a été réalisé avec un vrai professionnalisme, et le résultat est au-delà de ce que j'espérais.`,
-  (s: string) => `Équipe ponctuelle, accueil chaleureux et ${s} parfaitement exécuté. On sent l'expérience et le goût du travail bien fait. J'ai déjà pris mon prochain rendez-vous.`,
-  (s: string, c: string) => `Franchement la meilleure adresse de ${c} pour un ${s}. Prix annoncé respecté, aucun supplément surprise, et une qualité rare. Merci à toute l'équipe.`,
-  (s: string) => `Je suis très exigeant et j'ai été bluffé : ${s} réalisé dans les règles de l'art, avec des conseils honnêtes et un suivi sérieux. On sent que le client compte vraiment.`,
-  (s: string, c: string) => `Recommandé par un ami, adopté au premier essai. Le ${s} vaut largement le déplacement à ${c}. Personnel à l'écoute et résultat impeccable.`,
-];
-
-function monthsAgo(): string {
-  const fr = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"];
-  const d = new Date();
-  d.setMonth(d.getMonth() - (1 + Math.floor(Math.random() * 4)));
-  return `${fr[d.getMonth()]} ${d.getFullYear()}`;
+// Données de réputation RÉELLES uniquement : jamais d'avis, de dates ou de
+// chiffres inventés (conformité — pratiques commerciales trompeuses).
+function reviewCountInt(v: string | undefined): number {
+  return parseInt((v || "").replace(/[^\d]/g, "")) || 0;
 }
 
 export function generateSiteHtml(d: D): string {
@@ -48,15 +38,15 @@ export function generateSiteHtml(d: D): string {
   const accent = d.ACCENT_COLOR || niche.accent;
   const neutral = d.NEUTRAL_BG || niche.neutralBg;
   const font = d.DISPLAY_FONT || niche.displayFont;
-  const names = LOCAL_NAMES[d.COUNTRY ?? "default"] ?? LOCAL_NAMES.default;
   const tel = d.PHONE_LINK || "";
   const name = esc(d.BUSINESS_NAME);
   const city = esc(d.CITY || "");
-  const rating = parseFloat(d.GOOGLE_RATING || "4.8") || 4.8;
-  const years = 5 + Math.floor(Math.random() * 8);
-  const clients = Math.min(2000, Math.max(250, years * (120 + Math.floor(Math.random() * 120))));
+  const rating = parseFloat(d.GOOGLE_RATING || "0") || 0;
+  const reviews = reviewCountInt(d.REVIEW_COUNT);
+  const hasReviews = rating > 0 && reviews > 0;
+  const hours = d.HOURS_WEEKDAY || "";
   const title = `${d.BUSINESS_NAME} — ${niche.label} à ${d.CITY}`.slice(0, 58);
-  const metaDesc = `${d.BUSINESS_NAME}, ${niche.label.toLowerCase()} à ${d.CITY}. ${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis. ${d.TAGLINE}. Appel : ${d.PHONE}.`.slice(0, 158);
+  const metaDesc = `${d.BUSINESS_NAME}, ${niche.label.toLowerCase()} à ${d.CITY}.${hasReviews ? ` ${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis publics.` : ""} ${d.TAGLINE}. Appel : ${d.PHONE}.`.slice(0, 158);
 
   const servicesHtml = niche.services.map((s, i) => `
       <div class="service-card" data-aos="fade-up" data-aos-delay="${(i % 3) * 100}">
@@ -78,21 +68,20 @@ export function generateSiteHtml(d: D): string {
       </div>`;
   }).join("");
 
-  const testimonialsHtml = names.slice(0, 6).map((n, i) => {
-    const svc = niche.testimonialServices[i % niche.testimonialServices.length];
-    const initials = n.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
-    const bg = [accent, primary, shade(accent, -20), shade(primary, 30), shade(accent, 20), shade(primary, -10)][i % 6];
-    return `
-      <div class="testimonial-card">
-        <div class="test-header">
-          <div class="test-avatar" style="background:${bg}">${initials}</div>
-          <div><div class="test-name">${esc(n)}</div><div class="test-stars">★★★★★</div></div>
-          <div class="test-source"><svg width="20" height="20" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a7.2 7.2 0 0 1 0-4.6V6.66H2.18a11 11 0 0 0 0 10.68l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg></div>
+  // Section réputation 100% factuelle : note + nombre d'avis RÉELS, lien vers
+  // la fiche Google. Aucun témoignage inventé, aucun logo Google trompeur.
+  const reputationHtml = hasReviews ? `
+      <div class="rep-card" data-aos="zoom-in">
+        <div class="rep-score">
+          <div class="rep-stars">★★★★★</div>
+          <div class="rep-note">${d.GOOGLE_RATING}<span>/5</span></div>
+          <div class="rep-count">${d.REVIEW_COUNT} avis publics sur Google</div>
         </div>
-        <p>${REVIEW_TEMPLATES[i % REVIEW_TEMPLATES.length](svc, city)}</p>
-        <div class="test-date">${monthsAgo()}</div>
-      </div>`;
-  }).join("");
+        <div class="rep-side">
+          <p>La réputation de ${name} se lit sur sa fiche Google : note moyenne de ${d.GOOGLE_RATING}/5 construite sur ${d.REVIEW_COUNT} avis publics laissés par ses clients.</p>
+          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-dark"><i data-lucide="star"></i> Lire les avis sur Google</a>
+        </div>
+      </div>` : "";
 
   const faqItems = niche.faq.slice(0, 8);
   const faqCol = (items: typeof faqItems) => items.map((f) => `
@@ -122,24 +111,33 @@ export function generateSiteHtml(d: D): string {
     ["map-pin", `${city} et alentours`],
   ].map(([i, t]) => `<div class="trust-item"><i data-lucide="${i}"></i><span>${esc(t)}</span></div>`).join("");
 
-  const marquee = `☎ ${esc(d.PHONE)}&ensp;·&ensp;${esc(d.ADDRESS)}, ${city}&ensp;·&ensp;${esc(d.HOURS_WEEKDAY)}&ensp;·&ensp;★ ${d.GOOGLE_RATING}/5 — ${d.REVIEW_COUNT} avis vérifiés&ensp;·&ensp;${d.TAGLINE ? esc(d.TAGLINE) : ""}&ensp;·&ensp;`;
+  const marqueeParts = [
+    `☎ ${esc(d.PHONE)}`,
+    `&ensp;·&ensp;${esc(d.ADDRESS)}, ${city}`,
+    hours ? `&ensp;·&ensp;${esc(hours)}` : "",
+    hasReviews ? `&ensp;·&ensp;★ ${d.GOOGLE_RATING}/5 — ${d.REVIEW_COUNT} avis publics sur Google` : "",
+    d.TAGLINE ? `&ensp;·&ensp;${d.TAGLINE ? esc(d.TAGLINE) : ""}` : "",
+  ].filter(Boolean);
+  const marquee = marqueeParts.join("") + "&ensp;·&ensp;";
   const marqueeTrack = marquee.repeat(4);
 
-  const jsonLd = {
+  const COUNTRY_CODES: Record<string, string> = { France: "FR", Maroc: "MA", "United States": "US", USA: "US", "United Kingdom": "GB" };
+  const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": d.SCHEMA_TYPE || "LocalBusiness",
     name: d.BUSINESS_NAME,
     description: (d.DESCRIPTION || "").slice(0, 200),
     image: d.HERO_IMAGE_URL,
     telephone: d.PHONE,
-    address: { "@type": "PostalAddress", streetAddress: d.ADDRESS, addressLocality: d.CITY, postalCode: d.ZIP, addressCountry: d.COUNTRY === "Maroc" ? "MA" : "FR" },
+    address: { "@type": "PostalAddress", streetAddress: d.ADDRESS, addressLocality: d.CITY, postalCode: d.ZIP, addressCountry: COUNTRY_CODES[d.COUNTRY] ?? "FR" },
     geo: { "@type": "GeoCoordinates", latitude: d.LAT, longitude: d.LNG },
-    aggregateRating: { "@type": "AggregateRating", ratingValue: d.GOOGLE_RATING, reviewCount: String(parseInt(d.REVIEW_COUNT) || 50), bestRating: "5" },
-    priceRange: "$$",
-    currenciesAccepted: d.CURRENCY,
-    paymentAccepted: d.PAYMENT,
   };
-  if (d.EMAIL && d.EMAIL !== "none") Object.assign(jsonLd, { email: d.EMAIL });
+  // aggregateRating UNIQUEMENT avec des avis réels — sinon mention trompeuse.
+  if (hasReviews) jsonLd.aggregateRating = { "@type": "AggregateRating", ratingValue: d.GOOGLE_RATING, reviewCount: String(reviews), bestRating: "5" };
+  if (d.PAYMENT) jsonLd.paymentAccepted = d.PAYMENT;
+  jsonLd.priceRange = "$$";
+  jsonLd.currenciesAccepted = d.CURRENCY;
+  if (d.EMAIL && d.EMAIL !== "none") jsonLd.email = d.EMAIL;
 
   return `<!DOCTYPE html>
 <html lang="${d.LANG || "fr"}"${rtl ? ' dir="rtl"' : ""}>
@@ -315,21 +313,15 @@ h2{font-family:var(--font-display);font-size:clamp(2rem,4.5vw,3rem);line-height:
 .gallery-info h4{font-size:1rem;font-weight:700;margin-bottom:4px}
 .gallery-info p{font-size:.8rem;opacity:.8}
 .gallery-tag{position:absolute;top:14px;${rtl ? "left" : "right"}:14px;background:rgba(255,255,255,.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em}
-/* TESTIMONIALS */
-#testimonials{overflow:hidden}
-.testimonials-viewport{overflow:hidden;margin-top:48px}
-.testimonials-track{display:flex;transition:transform .6s var(--ease-out)}
-.testimonial-card{flex:0 0 calc(33.333% - 16px);margin-right:24px;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:30px 28px;box-shadow:var(--shadow-sm)}
-.testimonial-card p{color:var(--text-mid);font-size:.94rem;line-height:1.75;margin:18px 0 14px}
-.test-header{display:flex;align-items:center;gap:14px}
-.test-avatar{width:46px;height:46px;border-radius:50%;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0}
-.test-header>div:nth-child(2){flex:1}
-.test-name{font-weight:700;font-size:.95rem}
-.test-stars{color:#F5B50A;font-size:.85rem;letter-spacing:2px}
-.test-date{font-size:.78rem;color:var(--text-light)}
-.test-dots{display:flex;justify-content:center;gap:8px;margin-top:28px}
-.test-dot{width:10px;height:10px;border-radius:50%;border:0;background:${alpha(primary, .2)};cursor:pointer;transition:var(--transition);padding:0}
-.test-dot.active{background:var(--accent);transform:scale(1.3)}
+/* RÉPUTATION (factuelle) */
+.rep-wrap{display:flex;justify-content:center}
+.rep-card{display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:center;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:44px 48px;box-shadow:var(--shadow-md);max-width:860px;width:100%}
+.rep-stars{color:#F5B50A;font-size:1.3rem;letter-spacing:4px}
+.rep-note{font-family:var(--font-display);font-size:3.6rem;font-weight:700;line-height:1;margin-top:6px}
+.rep-note span{font-size:1.4rem;color:var(--text-light);font-weight:600}
+.rep-count{font-size:.9rem;color:var(--text-mid);margin-top:6px}
+.rep-side p{color:var(--text-mid);line-height:1.75;margin-bottom:20px}
+@media(max-width:768px){.rep-card{grid-template-columns:1fr;gap:24px;padding:32px 26px}}
 /* GUARANTEES */
 .guarantees-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:48px}
 .guarantee-card{background:var(--card-bg);border-radius:var(--radius-lg);padding:30px 28px;border:1px solid var(--border);border-top:4px solid var(--accent);box-shadow:var(--shadow-sm);transition:var(--transition)}
@@ -410,7 +402,6 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 .modal-close:hover{background:var(--accent);color:#fff}
 /* RESPONSIVE */
 @media(max-width:1024px){
-  .testimonial-card{flex-basis:calc(50% - 12px)}
 }
 @media(max-width:768px){
   .nav-links{display:none}
@@ -424,7 +415,6 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
   .faq-grid{grid-template-columns:1fr}
   .contact-grid{grid-template-columns:1fr}
   .footer-grid{grid-template-columns:1fr;gap:32px}
-  .testimonial-card{flex-basis:100%;margin-right:0}
   .hero-content{padding:120px 0 60px}
 }
 @media(max-width:1024px) and (min-width:769px){.gallery-grid{grid-template-columns:1fr 1fr}.services-grid{grid-template-columns:1fr 1fr}}
@@ -459,14 +449,14 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
     <div class="hero-pattern"></div>
   </div>
   <div class="hero-content container">
-    <div class="hero-badge" data-aos="fade-down"><span class="stars">★★★★★</span><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis vérifiés</span></div>
+    ${hasReviews ? `<div class="hero-badge" data-aos="fade-down"><span class="stars">★★★★★</span><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis publics sur Google</span></div>` : ""}
     <h1 data-aos="fade-up" data-aos-delay="100">${esc(d.TAGLINE)}</h1>
     <p class="hero-sub" data-aos="fade-up" data-aos-delay="200">${esc(niche.taglineTemplates[0])} à ${city} — ${esc(niche.trustBadges.join(", ").toLowerCase())}.</p>
     <div class="hero-ctas" data-aos="fade-up" data-aos-delay="300">
       <a href="tel:${tel}" class="btn btn-primary btn-pulse"><i data-lucide="phone"></i> Appeler maintenant</a>
       <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-outline-white"><i data-lucide="map-pin"></i> Itinéraire</a>
     </div>
-    <div class="hero-trust" data-aos="fade-up" data-aos-delay="400">${trustHtml}<span><i data-lucide="clock"></i> ${esc(d.HOURS_WEEKDAY)}</span></div>
+    <div class="hero-trust" data-aos="fade-up" data-aos-delay="400">${trustHtml}${hours ? `<span><i data-lucide="clock"></i> ${esc(hours)}</span>` : ""}</div>
   </div>
   <div class="hero-scroll"><div class="scroll-line"></div></div>
 </section>
@@ -489,15 +479,15 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
       <div class="about-visual" data-aos="fade-right">
         <div class="about-image-frame">
           <img src="${d.ABOUT_IMAGE_URL}" alt="L'équipe ${name} au travail" loading="lazy">
-          <div class="about-badge-float"><div class="badge-number">${years}+</div><div class="badge-text">ans de<br>métier</div></div>
+          ${hasReviews ? `<div class="about-badge-float"><div class="badge-number">${d.GOOGLE_RATING}</div><div class="badge-text">note Google<br>sur ${d.REVIEW_COUNT} avis</div></div>` : ""}
         </div>
-        <div class="about-accent-block"><i data-lucide="${niche.icon}"></i><span>${clients}+ clients satisfaits</span></div>
+        <div class="about-accent-block"><i data-lucide="${niche.icon}"></i><span>${niche.label.toLowerCase()} à ${city}</span></div>
       </div>
       <div class="about-text" data-aos="fade-left" data-aos-delay="150">
         <div class="section-label">À propos</div>
         <h2>Le métier avant tout, le client au centre</h2>
         <p class="about-lead">${esc(d.DESCRIPTION)}</p>
-        <p>Installés à ${city} depuis ${years} ans, nous avons construit notre réputation client après client : bouche-à-oreille, avis Google et fidélité. Pas de discours creux — un travail propre, des prix annoncés à l'avance et une équipe qui connaît chacun de ses habitués.</p>
+        <p>Installés à ${city}, nous avons construit notre réputation client après client : bouche-à-oreille, avis Google et fidélité. Pas de discours creux — un travail propre, des prix annoncés à l'avance et une équipe qui connaît chacun de ses habitués.</p>
         <ul class="about-checklist">
           ${niche.guarantees.map((g) => `<li><i data-lucide="check-circle-2"></i> ${esc(g.title)} — ${esc(g.desc)}</li>`).join("")}
         </ul>
@@ -513,11 +503,13 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 <section id="stats" class="section-stats">
   <div class="stats-bg-pattern"></div>
   <div class="container">
-    <div class="stats-grid">
-      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="award"></i></div><div class="stat-number" data-count="${years}" data-suffix="+">0</div><div class="stat-label">Ans d'expérience</div></div>
-      <div class="stat-item" data-aos="zoom-in" data-aos-delay="100"><div class="stat-icon"><i data-lucide="users"></i></div><div class="stat-number" data-count="${clients}" data-suffix="+">0</div><div class="stat-label">Clients accompagnés</div></div>
-      <div class="stat-item" data-aos="zoom-in" data-aos-delay="200"><div class="stat-icon"><i data-lucide="star"></i></div><div class="stat-number" data-count="${Math.round(rating * 10)}" data-decimal="1">0</div><div class="stat-label">Note Google</div></div>
-      <div class="stat-item" data-aos="zoom-in" data-aos-delay="300"><div class="stat-icon"><i data-lucide="message-square-quote"></i></div><div class="stat-number" data-count="${parseInt(d.REVIEW_COUNT) || 50}" data-suffix="+">0</div><div class="stat-label">Avis clients</div></div>
+    <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      ${hasReviews ? `
+      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="star"></i></div><div class="stat-number" data-count="${Math.round(rating * 10)}" data-decimal="1">0</div><div class="stat-label">Note Google</div></div>
+      <div class="stat-item" data-aos="zoom-in" data-aos-delay="100"><div class="stat-icon"><i data-lucide="message-square-quote"></i></div><div class="stat-number" data-count="${reviews}" data-suffix="+">0</div><div class="stat-label">Avis publics</div></div>` : `
+      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="map-pin"></i></div><div class="stat-number" style="font-size:clamp(1.6rem,3vw,2.4rem)">${city}</div><div class="stat-label">Zone desservie</div></div>`}
+      <div class="stat-item" data-aos="zoom-in" data-aos-delay="200"><div class="stat-icon"><i data-lucide="phone-call"></i></div><div class="stat-number" style="font-size:clamp(1.6rem,3vw,2.4rem)">Direct</div><div class="stat-label">${esc(d.PHONE)}</div></div>
+      <div class="stat-item" data-aos="zoom-in" data-aos-delay="300"><div class="stat-icon"><i data-lucide="clock"></i></div><div class="stat-number" style="font-size:clamp(1.3rem,2.6vw,2rem)">${hours ? esc(hours) : "Local"}</div><div class="stat-label">${hours ? "Horaires" : "Entreprise locale"}</div></div>
     </div>
   </div>
 </section>
@@ -539,14 +531,14 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
   </div>
 </section>
 
+${reputationHtml ? `
 <section id="testimonials" class="section">
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Avis clients</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Ils nous font confiance depuis des années</h2>
-    <div class="testimonials-viewport"><div class="testimonials-track" id="testimonialsTrack">${testimonialsHtml}</div></div>
-    <div class="test-dots" id="testDots"></div>
+    <div class="section-label" data-aos="fade-up">Réputation</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">Ce que disent ses clients, sur Google</h2>
+    <div class="rep-wrap">${reputationHtml}</div>
   </div>
-</section>
+</section>` : ""}
 
 <section id="guarantees" class="section section-alt">
   <div class="section-pattern"></div>
@@ -571,7 +563,7 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 <section id="cta-banner">
   <div class="container" data-aos="zoom-in">
     <h2>Un projet ? Parlons-en maintenant.</h2>
-    <p>Un réponse claire, un devis gratuit et une équipe disponible ${esc(d.HOURS_WEEKDAY.toLowerCase())}.</p>
+    <p>Un réponse claire, un devis gratuit et une équipe disponible pour vous servir.</p>
     <a href="tel:${tel}" class="btn btn-primary btn-pulse"><i data-lucide="phone"></i> ${esc(d.PHONE)}</a>
   </div>
 </section>
@@ -586,14 +578,14 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
         <div class="contact-line"><i data-lucide="phone"></i><div><a href="tel:${tel}">${esc(d.PHONE)}</a><small>Appel direct, réponse rapide</small></div></div>
         ${d.EMAIL && d.EMAIL !== "none" ? `<div class="contact-line"><i data-lucide="mail"></i><div><a href="mailto:${esc(d.EMAIL)}">${esc(d.EMAIL)}</a><small>Réponse sous 24h ouvrées</small></div></div>` : ""}
         <div class="contact-line"><i data-lucide="map-pin"></i><div><a href="${d.MAPS_LINK}" target="_blank" rel="noopener">${esc(d.ADDRESS)}, ${esc(d.ZIP)} ${city}</a><small>${esc(d.COUNTRY)}</small></div></div>
-        <div class="contact-line"><i data-lucide="clock"></i><div><span>${esc(d.HOURS_WEEKDAY)}</span><small>${esc(d.HOURS_SAT)} · ${esc(d.HOURS_SUN)}</small></div></div>
-        <div class="contact-line"><i data-lucide="star"></i><div><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis Google</span><small>Note vérifiée sur notre fiche établissement</small></div></div>
+        ${hours ? `<div class="contact-line"><i data-lucide="clock"></i><div><span>${esc(hours)}</span><small>${esc(d.HOURS_SAT)} · ${esc(d.HOURS_SUN)}</small></div></div>` : ""}
+        ${hasReviews ? `<div class="contact-line"><i data-lucide="star"></i><div><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis publics Google</span><small>Consultables sur notre fiche Google</small></div></div>` : ""}
         <div class="map-frame"><iframe src="${d.MAPS_EMBED}" loading="lazy" title="Carte ${name}" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
       </div>
       <!-- Branchez votre endpoint Formspree : remplacez l'action ci-dessous par https://formspree.io/f/VOTRE_ID -->
       <form id="contact-form" action="https://formspree.io/f/FORMSPREE_ID" method="POST" data-aos="fade-left" data-aos-delay="150">
         <h3>Envoyer un message</h3>
-        <p>Réponse garantie sous 24h ouvrées. Pour les urgences, appelez directement.</p>
+        <p>Réponse personnalisée sous 24h ouvrées. Pour les urgences, appelez directement.</p>
         <div class="f-group"><label for="f-name">Nom complet *</label><input id="f-name" name="name" type="text" autocomplete="name" placeholder="Votre nom"><span class="field-error" id="error-name"></span></div>
         <div class="f-group"><label for="f-phone">Téléphone</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" placeholder="+33 6 00 00 00 00"><span class="field-error" id="error-phone"></span></div>
         <div class="f-group"><label for="f-msg">Votre demande *</label><textarea id="f-msg" name="message" placeholder="Décrivez votre besoin en quelques mots..."></textarea><span class="field-error" id="error-message"></span></div>
@@ -668,12 +660,6 @@ const App={
     document.querySelectorAll('.mobile-menu a').forEach((l)=>l.addEventListener('click',()=>{burger.classList.remove('active');mm.classList.remove('open');document.body.style.overflow='';}));},
   initParallax(){const img=document.querySelector('.hero-bg img');if(!img||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;window.addEventListener('scroll',()=>{const y=window.scrollY;if(y<window.innerHeight)img.style.transform='scale(1) translateY('+(y*.3)+'px)';},{passive:true});},
   initFAQ(){document.querySelectorAll('.faq-item').forEach((item)=>{const q=item.querySelector('.faq-question');const a=item.querySelector('.faq-answer');q.addEventListener('click',()=>{const open=item.classList.contains('open');document.querySelectorAll('.faq-item.open').forEach((o)=>{o.classList.remove('open');o.querySelector('.faq-answer').style.maxHeight='0';});if(!open){item.classList.add('open');a.style.maxHeight=a.scrollHeight+'px';}});});},
-  initCarousel(){const track=document.getElementById('testimonialsTrack');const dots=document.getElementById('testDots');if(!track)return;const cards=track.querySelectorAll('.testimonial-card');let idx=0;const perView=()=>window.innerWidth<768?1:window.innerWidth<1024?2:3;
-    const total=()=>Math.max(1,cards.length-perView()+1);
-    const build=()=>{if(!dots)return;dots.innerHTML='';for(let i=0;i<total();i++){const b=document.createElement('button');b.className='test-dot'+(i===idx?' active':'');b.setAttribute('aria-label','Avis '+(i+1));b.addEventListener('click',()=>goTo(i));dots.appendChild(b);}};
-    const goTo=(i)=>{const t=total();idx=((i%t)+t)%t;const card=cards[0];const gap=24;const w=card.offsetWidth+(perView()===1?0:gap);track.style.transform='translateX('+(-1*(idx*w))+'px)';document.querySelectorAll('.test-dot').forEach((d,j)=>d.classList.toggle('active',j===idx));};
-    build();window.addEventListener('resize',()=>{build();goTo(idx);});
-    setInterval(()=>goTo(idx+1),5000);},
   initModals(){['legalModal','privacyModal'].forEach((id)=>{const modal=document.getElementById(id);if(!modal)return;const closeBtn=modal.querySelector('.modal-close');const overlay=modal.querySelector('.modal-overlay');
     const open=()=>{modal.classList.add('modal-active');document.body.style.overflow='hidden';if(closeBtn)closeBtn.focus();};
     const close=()=>{modal.classList.remove('modal-active');document.body.style.overflow='';};
@@ -695,7 +681,7 @@ const App={
       else{throw new Error();}
     }catch{btn.innerHTML=orig;btn.disabled=false;form.querySelector('.form-error-global').textContent='Une erreur est survenue. Appelez-nous directement au '+ '${esc(d.PHONE)}';}
   });},
-  start(){this.initAOS();this.initCounters();this.initNav();this.initParallax();this.initFAQ();this.initCarousel();this.initModals();this.initForm();if(window.lucide)lucide.createIcons();}
+  start(){this.initAOS();this.initCounters();this.initNav();this.initParallax();this.initFAQ();this.initModals();this.initForm();if(window.lucide)lucide.createIcons();}
 };
 document.addEventListener('DOMContentLoaded',()=>App.start());
 </script>

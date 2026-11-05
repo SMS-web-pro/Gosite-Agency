@@ -133,6 +133,13 @@ CREATE TABLE IF NOT EXISTS lead_notes (
   body text NOT NULL,
   created_at timestamp NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS do_not_contact (
+  id serial PRIMARY KEY,
+  email text NOT NULL UNIQUE,
+  reason text NOT NULL DEFAULT 'stop',
+  source text NOT NULL DEFAULT 'manual',
+  created_at timestamp NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS agent_skills (
   id serial PRIMARY KEY,
   agent_key text NOT NULL,
