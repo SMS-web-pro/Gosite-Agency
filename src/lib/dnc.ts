@@ -21,10 +21,10 @@ export async function isDoNotContact(email: string | null | undefined): Promise<
   return rows.length > 0;
 }
 
-// Réponse entrante = demande de désinscription ? Détection large (fr/en) :
-// "STOP", "désinscription", "unsubscribe", "ne plus me contacter"…
+// Réponse entrante = demande de désinscription ? Détection large (fr/en) sur
+// radicaux : STOP, désinscri*, désabonn*, unsubscribe, "ne plus me contacter"…
 export function looksLikeOptOut(text: string | null | undefined): boolean {
   if (!text) return false;
   const t = text.toLowerCase();
-  return /\b(stop|unsubscribe|désinscription|desinscription|désinscrivez|desinscrivez|ne plus me contacter|plus jamais me|retirez[- ]moi|remove me|opt[- ]?out|se désabonner|se desabonner|désabonnement|desabonnement)\b/.test(t);
+  return /\b(stop|unsubscribe|un[\s-]?subscribe|desinscri\w*|désinscri\w*|desabonn\w*|désabonn\w*|ne plus (me |vous )?contacter|plus jamais (me |vous )?contacter|retirez[- ]?(moi|nous)|remove me|opt[- ]?out)\b/.test(t);
 }
