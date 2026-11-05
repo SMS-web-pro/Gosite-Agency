@@ -10,3 +10,5 @@ next-env.d.ts
 .neon
 start.log
 .superpowers/
+tests/_lib/
+.tmp*

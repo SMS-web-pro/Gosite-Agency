@@ -22,7 +22,17 @@ function cleanEmail(e: string): string | null {
   return lower;
 }
 
-export async function discoverEmail(businessName: string, city: string | null): Promise<string | null> {
+// Géolocalisation des recherches Serper : résultats cohérents avec le pays
+// du lead (avant : gl:"ma" codé en dur — Dallas était cherché comme au Maroc).
+function geoFor(country: string | null | undefined): { gl: string; hl: string } {
+  const c = (country ?? "").toLowerCase();
+  if (/\b(usa?|us|united states|america)\b/.test(c) || /états[-\s]?unis|etats[-\s]?unis/.test(c)) return { gl: "us", hl: "en" };
+  if (/\b(uk|united kingdom|england|great britain|gb)\b/.test(c) || /royaume[-\s]?uni/.test(c)) return { gl: "uk", hl: "en" };
+  if (c.includes("maroc") || c.includes("morocco")) return { gl: "ma", hl: "fr" };
+  return { gl: "fr", hl: "fr" };
+}
+
+export async function discoverEmail(businessName: string, city: string | null, country?: string | null): Promise<string | null> {
   const keys = await db
     .select()
     .from(serperKeys)
@@ -32,11 +42,12 @@ export async function discoverEmail(businessName: string, city: string | null): 
   if (!key) return null;
 
   const q = `"${businessName}" ${city ?? ""} contact email`;
+  const geo = geoFor(country);
   try {
     const res = await fetch("https://google.serper.dev/search", {
       method: "POST",
       headers: { "X-API-KEY": key.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ q, gl: "ma", hl: "fr", num: 10 }),
+      body: JSON.stringify({ q, gl: geo.gl, hl: geo.hl, num: 10 }),
       signal: AbortSignal.timeout(15000),
     });
     // Décompte du crédit quoiqu'il arrive (succès, pas de résultat, etc.)
@@ -60,11 +71,12 @@ export async function discoverEmail(businessName: string, city: string | null): 
     }
     if (found.size === 0) return null;
 
-    // Rang : on préfère une adresse qui ressemble au nom du business
+    // Rang : priorité à l'adresse qui ressemble au nom du business.
+    // Pas de bonus gmail/hotmail : une adresse freemail est souvent un
+    // particulier — prospection B2C interdite sans consentement.
     const slug = businessName.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]/g, "");
     const ranked = [...found].sort((a, b) => {
-      const score = (e: string) => (slug && e.replace(/[^a-z0-9]/g, "").includes(slug.slice(0, 8)) ? 2 : 0)
-        + (/gmail|outlook|hotmail|yahoo|icloud|proton/.test(e) ? 1 : 0);
+      const score = (e: string) => (slug && e.replace(/[^a-z0-9]/g, "").includes(slug.slice(0, 8)) ? 2 : 0);
       return score(b) - score(a);
     });
     const best = ranked[0];

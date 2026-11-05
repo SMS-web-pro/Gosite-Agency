@@ -298,7 +298,15 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
   const price = (await getSetting("OFFER_PRICE")) || "490";
   const sheet = (p.clientData ?? {}) as Record<string, string>;
   const sheetCurrency = typeof sheet.CURRENCY === "string" ? sheet.CURRENCY.trim().toUpperCase() : "";
-  const currency = sheetCurrency || (await getSetting("OFFER_CURRENCY")) || "EUR";
+  // Devise du pays du lead si la fiche ne la précise pas (un lead US ne doit
+  // jamais recevoir « 490 € »).
+  const country = String(p.country ?? "");
+  const geoCurrency = /\b(usa?|us|united states|états-unis|etats-unis|america)\b/i.test(country)
+    ? "USD"
+    : /\b(uk|united kingdom|england|royaume-uni|gb)\b/i.test(country)
+      ? "GBP"
+      : "";
+  const currency = sheetCurrency || geoCurrency || (await getSetting("OFFER_CURRENCY")) || "EUR";
   const lang = resolveLang(p);
 
   // 🧠 Copy en 2 passes, avec repli complet par langue (jamais de blocage)

@@ -132,9 +132,12 @@ async function buildContext(agentKey: string): Promise<string> {
   let ctx = "";
   if (skills.length) {
     ctx += `\n\nTES COMPÉTENCES ACTIVES :\n${skills.map((s) => `• ${s.title} — ${s.instruction}`).join("\n")}`;
-    await db.update(agentSkills)
+    // Compteur d'usage : non bloquant (une seule requête batch) — ne retarde
+    // jamais le réflexion LLM, et un échec est sans conséquence.
+    void db.update(agentSkills)
       .set({ useCount: sql`${agentSkills.useCount} + 1` })
-      .where(and(eq(agentSkills.agentKey, agentKey), eq(agentSkills.active, true)));
+      .where(and(eq(agentSkills.agentKey, agentKey), eq(agentSkills.active, true)))
+      .catch(() => {});
   }
   if (learnings.length) {
     ctx += `\n\nCE QUE TU AS APPRIS DE TES MISSIONS PRÉCÉDENTES :\n${learnings.map((l) => `• ${l.insight}`).join("\n")}`;

@@ -179,7 +179,22 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     }
   }
 
-  // ── 3) Auto-amélioration : un agent évolue à chaque cycle (rotation) ──
+  // ── 3) Rétention : purge légère des journaux (coût nul sous les seuils) ──
+  try {
+    const { purgeOldData } = await import("./maintenance");
+    const purged = await purgeOldData();
+    if (purged.activities + purged.aiCalls + purged.rioMessages + purged.orphanEmails > 0) {
+      await logActivity({
+        agentKey: "autopilot", action: "purge_donnees",
+        message: `Rétention : ${purged.activities} activités, ${purged.aiCalls} appels IA, ${purged.rioMessages} messages RIO, ${purged.orphanEmails} emails orphelins supprimés.`,
+        level: "info",
+      });
+    }
+  } catch (err) {
+    summary.errors.push(`purge: ${err instanceof Error ? err.message : "?"}`);
+  }
+
+  // ── 4) Auto-amélioration : un agent évolue à chaque cycle (rotation) ──
   try {
     const { brainOnline, evolveAgent } = await import("./agent-brain");
     if (await brainOnline()) {

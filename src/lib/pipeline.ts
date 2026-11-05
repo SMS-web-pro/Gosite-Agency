@@ -164,7 +164,7 @@ export async function validateProspect(p: Prospect): Promise<{ ok: boolean; reas
   if (!reason) {
     if (!p.email && !p.phone) {
       const { discoverEmail } = await import("./discover");
-      const found = await discoverEmail(p.businessName, p.city);
+      const found = await discoverEmail(p.businessName, p.city, p.country);
       if (found) {
         const test = await verifyEmail(found);
         if (test.status === "invalid") {
@@ -193,9 +193,11 @@ export async function validateProspect(p: Prospect): Promise<{ ok: boolean; reas
 
   if (reason) {
     const isAiVeto = reason.startsWith("Potentiel jugé trop faible");
+    // Conserve un score/analyse IA existants : une revalidation par règles
+    // dures ne doit pas effacer l'analyse précédente.
     await db.update(prospects).set({
       stage: "rejected", rejectReason: reason,
-      aiScore: ai?.score ?? null, aiInsight: ai?.insight ?? null,
+      ...(ai ? { aiScore: ai.score, aiInsight: ai.insight } : {}),
       updatedAt: new Date(),
     }).where(eq(prospects.id, p.id));
     await markAgentRunEnd("validator", true);
@@ -208,8 +210,7 @@ export async function validateProspect(p: Prospect): Promise<{ ok: boolean; reas
 
   await db.update(prospects).set({
     stage: "validated",
-    aiScore: ai?.score ?? null,
-    aiInsight: ai?.insight ?? null,
+    ...(ai ? { aiScore: ai.score, aiInsight: ai.insight } : {}),
     updatedAt: new Date(),
   }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("validator", true);

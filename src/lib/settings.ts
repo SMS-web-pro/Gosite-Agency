@@ -67,13 +67,19 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   BREVO_SENDER_NAME: "GoSite Digital",
 };
 
+// Cache mémoire court (5 s) : getSetting est appelé ~10× par envoi d'email et
+// getAllSettings alimente le dashboard — sans cache, chaque lecture = 1+ requête.
+const CACHE_TTL_MS = 5000;
+const cache = new Map<SettingKey, { value: string; at: number }>();
+
 export async function getSetting(key: SettingKey): Promise<string> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value;
   const rows = await db.select().from(settings).where(eq(settings.key, key)).limit(1);
   const fromDb = rows[0]?.value?.trim();
-  if (fromDb) return fromDb;
-  const fromEnv = process.env[ENV_MAP[key]]?.trim();
-  if (fromEnv) return fromEnv;
-  return DEFAULTS[key] ?? "";
+  const out = fromDb || process.env[ENV_MAP[key]]?.trim() || DEFAULTS[key] || "";
+  cache.set(key, { value: out, at: Date.now() });
+  return out;
 }
 
 export async function setSetting(key: SettingKey, value: string) {
@@ -83,6 +89,7 @@ export async function setSetting(key: SettingKey, value: string) {
   } else {
     await db.update(settings).set({ value, updatedAt: new Date() }).where(eq(settings.key, key));
   }
+  cache.delete(key);
 }
 
 // Mode démo autorisé ? Par défaut NON — le système exige de vraies clés.
@@ -91,9 +98,12 @@ export async function allowSimulation(): Promise<boolean> {
 }
 
 export async function getAllSettings(): Promise<Record<string, string>> {
+  // Une seule requête pour les 23 clés (avant : 23 SELECT séquentiels).
+  const rows = await db.select().from(settings);
+  const map = new Map(rows.map((r) => [r.key, r.value?.trim() ?? ""]));
   const out: Record<string, string> = {};
   for (const key of Object.keys(SETTING_KEYS) as SettingKey[]) {
-    out[key] = await getSetting(key);
+    out[key] = map.get(key) || process.env[ENV_MAP[key]]?.trim() || DEFAULTS[key] || "";
   }
   return out;
 }
