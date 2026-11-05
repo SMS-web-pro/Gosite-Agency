@@ -9,14 +9,21 @@ export const maxDuration = 120;
 
 export async function POST(req: NextRequest) {
   await ensureSchema();
-  // Vérifie le secret enregistré avec setWebhook (anti-appels parasites)
+  // Secret obligatoire (configuré par setWebhook) — sans lui, n'importe qui
+  // peut injecter de faux updates Telegram.
   const secret = await getSetting("TELEGRAM_WEBHOOK_SECRET");
-  if (secret) {
-    const header = req.headers.get("x-telegram-bot-api-secret-token");
-    if (header !== secret) return NextResponse.json({ ok: false }, { status: 403 });
-  }
+  const header = req.headers.get("x-telegram-bot-api-secret-token");
+  if (!secret || header !== secret) return NextResponse.json({ ok: false }, { status: 403 });
   try {
-    const update = await req.json();
+    const update = (await req.json()) as { message?: { chat?: { id?: number }; text?: string } };
+    // Chat figé : usage personnel — si un chat est déjà enregistré, ignorer
+    // tout /start provenant d'un autre chat (anti-détournement du canal).
+    const registered = await getSetting("TELEGRAM_CHAT_ID");
+    const incoming = update.message?.chat?.id ? String(update.message.chat.id) : null;
+    if (registered && incoming && incoming !== registered && update.message?.text?.trim().startsWith("/start")) {
+      console.warn(`[telegram] /start refusé : chat inconnu ${incoming}`);
+      return NextResponse.json({ ok: true, ignored: "unknown chat" });
+    }
     await handleTelegramUpdate(update);
   } catch (err) {
     console.error("telegram webhook error", err);

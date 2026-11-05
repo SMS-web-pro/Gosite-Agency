@@ -1,7 +1,13 @@
 // Conversion du markdown léger produit par le LLM vers du HTML sûr.
 
 function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  // Quotes incluses : empêche le breakout d'attribut (href, style) dans le HTML généré.
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 // Rendu pour l'interface web (gras, italique, code, puces, liens cliquables)

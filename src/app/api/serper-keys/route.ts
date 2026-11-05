@@ -11,7 +11,10 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   await ensureSchema();
   const rows = await db.select().from(serperKeys).orderBy(asc(serperKeys.createdAt));
-  return NextResponse.json({ keys: rows });
+  // Ne jamais renvoyer les clés en clair — l'UI n'affiche que label/crédits/statut.
+  return NextResponse.json({
+    keys: rows.map((k) => ({ ...k, apiKey: `${k.apiKey.slice(0, 6)}••••${k.apiKey.slice(-4)}` })),
+  });
 }
 
 export async function POST(req: NextRequest) {

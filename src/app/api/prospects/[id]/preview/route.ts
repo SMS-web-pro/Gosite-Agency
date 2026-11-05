@@ -18,6 +18,12 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
     });
   }
   return new Response(p.siteHtml, {
-    headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-store",
+      // Le HTML vient du LLM : isolé dans une origine opaque (anti-XSS same-origin),
+      // scripts autorisés car les sites générés en utilisent.
+      "Content-Security-Policy": "sandbox allow-scripts",
+    },
   });
 }

@@ -4,13 +4,19 @@ import { prospects } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { logActivity } from "@/lib/activity";
 import { notifyTelegram } from "@/lib/telegram";
+import { getSetting } from "@/lib/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 // Webhook Whop "payment_succeeded" — marque le lead comme payé et notifie RIO.
-// Configurez l'URL dans Whop : <APP>/api/webhooks/whop
+// Configurez l'URL dans Whop : <APP>/api/webhooks/whop?secret=<CRON_SECRET>
 export async function POST(req: NextRequest) {
+  // Secret partagé dans l'URL du webhook (Whop ne signe pas ses payloads ici).
+  const secret = process.env.CRON_SECRET || (await getSetting("CRON_SECRET"));
+  if (secret && req.nextUrl.searchParams.get("secret") !== secret) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
   let payload: Record<string, unknown> = {};
   try {
     payload = (await req.json()) as Record<string, unknown>;

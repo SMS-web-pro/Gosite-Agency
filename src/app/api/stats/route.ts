@@ -39,7 +39,7 @@ export async function GET() {
     agents: allAgents,
     prospects: allProspects.slice(0, 100),
     activity: recentActivity,
-    serperKeys: keys,
+    serperKeys: keys.map((k) => ({ ...k, apiKey: `${k.apiKey.slice(0, 6)}••••${k.apiKey.slice(-4)}` })),
     stageCounts,
     kpis: {
       totalLeads: allProspects.length,

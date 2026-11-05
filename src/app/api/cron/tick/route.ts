@@ -7,14 +7,11 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 async function authorized(req: NextRequest): Promise<boolean> {
-  // Vercel Cron envoie "Authorization: Bearer $CRON_SECRET" si la variable existe,
-  // et toujours l'en-tête x-vercel-cron pour ses appels planifiés.
-  if (req.headers.get("x-vercel-cron")) return true;
-  const secret = (await getSetting("CRON_SECRET")) || process.env.CRON_SECRET || "";
+  // Vercel Cron envoie "Authorization: Bearer $CRON_SECRET" (variable configurée).
+  // Pas de raccourci x-vercel-cron ni de ?secret= : ce header est forgeable.
+  const secret = process.env.CRON_SECRET || (await getSetting("CRON_SECRET")) || "";
   if (!secret) return process.env.NODE_ENV !== "production"; // dev local seulement
-  const auth = req.headers.get("authorization");
-  if (auth === `Bearer ${secret}`) return true;
-  return req.nextUrl.searchParams.get("secret") === secret;
+  return req.headers.get("authorization") === `Bearer ${secret}`;
 }
 
 export async function GET(req: NextRequest) {

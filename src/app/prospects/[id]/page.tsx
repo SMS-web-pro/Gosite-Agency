@@ -383,7 +383,7 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
                   {p.deployedUrl ?? `/preview/${p.siteSlug}`}
                 </span>
               </div>
-              <iframe className="preview-frame" style={{ height: "calc(100% - 38px)" }} src={`/api/prospects/${p.id}/preview`} title={`Site ${p.businessName}`} />
+              <iframe className="preview-frame" style={{ height: "calc(100% - 38px)" }} src={`/api/prospects/${p.id}/preview`} sandbox="allow-scripts" title={`Site ${p.businessName}`} />
             </div>
           </div>
         ) : (

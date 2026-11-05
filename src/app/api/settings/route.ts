@@ -13,10 +13,11 @@ export async function GET() {
   const all = await getAllSettings();
   // Ne jamais exposer les secrets internes
   delete all.TELEGRAM_WEBHOOK_SECRET;
+  delete all.CRON_SECRET;
   // Mask secrets in listing
   const masked: Record<string, string> = {};
   for (const [k, v] of Object.entries(all)) {
-    const isSecret = /TOKEN|KEY/.test(k);
+    const isSecret = /TOKEN|KEY|SECRET/.test(k);
     masked[k] = v && isSecret ? SECRET_HINT(v) : v;
   }
   return NextResponse.json({ settings: masked });

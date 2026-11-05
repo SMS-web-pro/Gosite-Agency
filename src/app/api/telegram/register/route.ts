@@ -26,7 +26,28 @@ export async function GET(req: NextRequest) {
 // Enregistrement / réparation du webhook
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { appBaseUrl?: string };
-  if (body.appBaseUrl) await setSetting("APP_BASE_URL", body.appBaseUrl);
+  if (body.appBaseUrl) {
+    // Anti-détournement : seul le domaine de l'agence est accepté.
+    const allowed = new Set<string>();
+    for (const candidate of [await getSetting("APP_BASE_URL"), await getSetting("AGENCY_DOMAIN"), baseUrlFromReq(req)]) {
+      if (!candidate) continue;
+      try {
+        allowed.add(new URL(candidate).host);
+      } catch {
+        // URL invalide → ignorée
+      }
+    }
+    let host: string | null = null;
+    try {
+      host = new URL(body.appBaseUrl).host;
+    } catch {
+      host = null;
+    }
+    if (!host || !allowed.has(host) || !body.appBaseUrl.startsWith("https://")) {
+      return NextResponse.json({ error: "appBaseUrl refusé : doit être le domaine de l'agence en https" }, { status: 400 });
+    }
+    await setSetting("APP_BASE_URL", body.appBaseUrl);
+  }
   const appBase = (await getSetting("APP_BASE_URL")) || baseUrlFromReq(req);
   const res = await registerTelegramWebhook(appBase);
   const info = await getTelegramWebhookInfo();
