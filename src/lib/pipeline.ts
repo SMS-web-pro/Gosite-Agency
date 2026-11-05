@@ -128,28 +128,32 @@ export async function runScoutMission(
 // 🧠 Évaluation IA du potentiel commercial, par-delà les seuils chiffrés.
 async function aiQualify(p: Prospect): Promise<{ score: number; insight: string; verdict: "go" | "no-go" } | null> {
   const { agentThinkJson } = await import("./agent-brain");
-  return agentThinkJson<{ score: number; insight: string; verdict: "go" | "no-go" }>({
-    agent: "validator",
-    task: "qualification",
-    instruction:
-      "Évalue le potentiel commercial de ce prospect pour une offre de site vitrine à ~490€. " +
-      "Prends en compte : preuve sociale (note/avis), type de commerce (un indépendant décide vite, une chaîne non), " +
-      "absence de site, capacité à payer. Donne un score de 0 à 100 et un verdict. " +
-      'Réponds en JSON : {"score": number, "insight": "une phrase d\'analyse", "verdict": "go"|"no-go"}',
-    input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}\nNote: ${p.rating}/5\nAvis: ${p.reviewCount}\nSite web existant: ${p.hasWebsite ? p.websiteUrl : "aucun"}\nTéléphone: ${p.phone ?? "aucun"}\nEmail: ${p.email ?? "aucun"}`,
-    maxTokens: 220,
-    temperature: 0.3,
-  });
+  const { coerceQualify } = await import("./llm-coerce");
+  // Coercition stricte : un LLM qui renvoie score: "85 pts" ou insight numérique
+  // ne doit jamais ni planter l'étape ni écrire une valeur invalide en base.
+  return coerceQualify(
+    await agentThinkJson<{ score: number; insight: string; verdict: "go" | "no-go" }>({
+      agent: "validator",
+      task: "qualification",
+      instruction:
+        "Évalue le potentiel commercial de ce prospect pour une offre de site vitrine à ~490€. " +
+        "Prends en compte : preuve sociale (note/avis), type de commerce (un indépendant décide vite, une chaîne non), " +
+        "absence de site, capacité à payer. Donne un score de 0 à 100 et un verdict. " +
+        'Réponds en JSON : {"score": number, "insight": "une phrase d\'analyse", "verdict": "go"|"no-go"}',
+      input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}\nNote: ${p.rating}/5\nAvis: ${p.reviewCount}\nSite web existant: ${p.hasWebsite ? p.websiteUrl : "aucun"}\nTéléphone: ${p.phone ?? "aucun"}\nEmail: ${p.email ?? "aucun"}`,
+      maxTokens: 220,
+      temperature: 0.3,
+    }),
+  );
 }
 
 export async function validateProspect(p: Prospect): Promise<{ ok: boolean; reason?: string }> {
   await markAgentRunStart("validator");
   const rating = parseFloat(String(p.rating ?? "0"));
   const reviews = p.reviewCount ?? 0;
-  // 🧠 Le cerveau IA affine la décision et attribue un score de potentiel
-  const ai = await aiQualify(p);
 
-  // Règles dures (réputation + vitrine déjà présente)
+  // Règles dures D'ABORD (coût nul) : pas un seul appel LLM pour un lead
+  // qui est de toute façon rejeté.
   let reason: string | null = null;
   if (rating < 4.0) reason = `Note Google insuffisante (${rating}/5 < 4,0)`;
   else if (reviews < 10) reason = `Pas assez d'avis (${reviews} < 10)`;
@@ -177,9 +181,14 @@ export async function validateProspect(p: Prospect): Promise<{ ok: boolean; reas
     }
   }
 
-  // 🧠 Veto IA : potentiel jugé nul (chaîne, franchise, décision non locale)
-  if (!reason && ai && ai.verdict === "no-go" && (ai.score ?? 100) < 30) {
-    reason = `Potentiel jugé trop faible par l'analyse IA (${ai.score}/100) : ${ai.insight}`;
+  // 🧠 L'IA ne paie qu'à la fin : veto sur le potentiel (chaîne, franchise,
+  // décision non locale) uniquement si toutes les règles dures sont passées.
+  let ai: { score: number; insight: string; verdict: "go" | "no-go" } | null = null;
+  if (!reason) {
+    ai = await aiQualify(p);
+    if (ai && ai.verdict === "no-go" && (ai.score ?? 100) < 30) {
+      reason = `Potentiel jugé trop faible par l'analyse IA (${ai.score}/100) : ${ai.insight}`;
+    }
   }
 
   if (reason) {
@@ -239,6 +248,7 @@ export async function verifyProspectEmail(p: Prospect) {
   // 🧠 Toujours rien ? Emailor déduit les adresses les plus probables et les teste
   if (!p.email) {
     const { agentThinkJson } = await import("./agent-brain");
+    const { coerceStringArray } = await import("./llm-coerce");
     const guess = await agentThinkJson<{ candidates: string[] }>({
       agent: "emailor",
       task: "deduction_email",
@@ -250,7 +260,7 @@ export async function verifyProspectEmail(p: Prospect) {
       maxTokens: 200,
       temperature: 0.3,
     });
-    for (const candidate of (guess?.candidates ?? []).slice(0, 4)) {
+    for (const candidate of coerceStringArray(guess?.candidates).slice(0, 4)) {
       const test = await verifyEmail(candidate);
       if (test.status === "valid") {
         await db.update(prospects).set({ email: candidate, updatedAt: new Date() }).where(eq(prospects.id, p.id));
@@ -287,33 +297,41 @@ export async function mapProspect(p: Prospect) {
   await markAgentRunStart("mapper");
   const sheet = buildClientSheet(p);
 
-  // 🧠 Mapper enrichit la fiche : accroche, description et angle éditorial sur-mesure
-  const { agentThinkJson } = await import("./agent-brain");
-  const enriched = await agentThinkJson<{ tagline: string; description: string; style: string; angle: string }>({
-    agent: "mapper",
-    task: "enrichissement_fiche",
-    instruction:
-      "Rédige l'identité éditoriale de ce commerce pour son futur site vitrine. " +
-      "tagline : accroche percutante en français, max 8 mots, spécifique au métier et à la ville, sans point d'exclamation. " +
-      "description : 2 phrases naturelles décrivant l'établissement, ancrées localement, sans superlatif creux. " +
-      "style : un seul mot parmi luxury, bold, warm, minimal, urban. " +
-      "angle : en une phrase, l'argument de vente principal à mettre en avant. " +
-      'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string}',
-    input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}, ${p.country}\nAdresse: ${p.address}\nNote Google: ${p.rating}/5 avec ${p.reviewCount} avis\nAnalyse du Validator: ${p.aiInsight ?? "—"}`,
-    maxTokens: 400,
-    temperature: 0.7,
-  });
-  if (enriched?.tagline) sheet.TAGLINE = enriched.tagline.slice(0, 90);
-  if (enriched?.description) sheet.DESCRIPTION = enriched.description.slice(0, 400);
-  if (enriched?.style && ["luxury", "bold", "warm", "minimal", "urban"].includes(enriched.style)) sheet.STYLE = enriched.style;
-  if (enriched?.angle) sheet.SELLING_ANGLE = enriched.angle.slice(0, 220);
-
+  // Validation gratuite AVANT tout appel LLM : une fiche incomplète est un
+  // problème de données (téléphone absent…), payer l'IA ne la remplira pas.
   const validation = validateSheet(sheet);
   if (!validation.ok) {
     await markAgentRunEnd("mapper", false, `Champs manquants: ${validation.missing.join(",")}`);
     await logActivity({ agentKey: "mapper", action: "fiche_incomplete", message: `${p.businessName} : fiche incomplète (${validation.missing.join(", ")})`, level: "error", prospectId: p.id });
     throw new Error("Fiche client incomplète");
   }
+
+  // 🧠 Mapper enrichit la fiche : accroche, description et angle éditorial sur-mesure
+  const { agentThinkJson } = await import("./agent-brain");
+  const { coerceEnrich } = await import("./llm-coerce");
+  const enriched = coerceEnrich(
+    await agentThinkJson<{ tagline: string; description: string; style: string; angle: string }>({
+      agent: "mapper",
+      task: "enrichissement_fiche",
+      instruction:
+        "Rédige l'identité éditoriale de ce commerce pour son futur site vitrine. " +
+        "tagline : accroche percutante en français, max 8 mots, spécifique au métier et à la ville, sans point d'exclamation. " +
+        "description : 2 phrases naturelles décrivant l'établissement, ancrées localement, sans superlatif creux. " +
+        "style : un seul mot parmi luxury, bold, warm, minimal, urban. " +
+        "angle : en une phrase, l'argument de vente principal à mettre en avant. " +
+        'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string}',
+      input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}, ${p.country}\nAdresse: ${p.address}\nNote Google: ${p.rating}/5 avec ${p.reviewCount} avis\nAnalyse du Validator: ${p.aiInsight ?? "—"}`,
+      maxTokens: 400,
+      temperature: 0.7,
+    }),
+  );
+  // Coercition stricte : un tagline numérique ou un style hors liste ne plante
+  // plus l'étape (source historique de lead empoisonné en boucle de retry).
+  if (enriched.tagline) sheet.TAGLINE = enriched.tagline;
+  if (enriched.description) sheet.DESCRIPTION = enriched.description;
+  if (enriched.style) sheet.STYLE = enriched.style;
+  if (enriched.angle) sheet.SELLING_ANGLE = enriched.angle;
+
   await db.update(prospects).set({ clientData: sheet, tagline: sheet.TAGLINE, description: sheet.DESCRIPTION, stage: "mapped", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("mapper", true);
   await logActivity({
@@ -330,7 +348,7 @@ export async function buildProspectSite(p: Prospect) {
   const sheet = p.clientData ?? buildClientSheet(p);
   const result = await buildSite(sheet);
   const slug = await decideSlug(p);
-  await db.update(prospects).set({ siteHtml: result.html, siteSlug: slug, stage: "site_built", updatedAt: new Date() }).where(eq(prospects.id, p.id));
+  await updateWithSlug(p.id, slug, { siteHtml: result.html, stage: "site_built" });
   await markAgentRunEnd("coder", true);
   await logActivity({
     agentKey: "coder", action: "site_genere",
@@ -383,6 +401,23 @@ function decideSlug(p: Prospect): Promise<string> {
   return uniqueSiteSlug(p.siteSlug?.replace(/^c\d+-/, "") ?? slugifyId(p.businessName), p.id);
 }
 
+// Écriture du slug protégée par l'index unique en base (idx_prospects_site_slug) :
+// en cas de collision de course (deux leads homonymes validés en parallèle),
+// on régénère un slug libre et on retente une fois au lieu d'écraser un site.
+async function updateWithSlug(selfId: number, slug: string, values: Partial<typeof prospects.$inferInsert>) {
+  try {
+    await db.update(prospects).set({ ...values, siteSlug: slug, updatedAt: new Date() }).where(eq(prospects.id, selfId));
+  } catch (err) {
+    if ((err as { code?: string }).code !== "23505") throw err;
+    const alt = await uniqueSiteSlug(slug, selfId);
+    await db.update(prospects).set({ ...values, siteSlug: alt, updatedAt: new Date() }).where(eq(prospects.id, selfId));
+    await logActivity({
+      agentKey: "deployer", action: "slug_collision",
+      message: `Collision de slug détectée (« ${slug} ») → replacé par « ${alt} ».`, level: "warn", prospectId: selfId,
+    });
+  }
+}
+
 export async function deployProspectSite(p: Prospect) {
   await markAgentRunStart("deployer");
   if (!p.siteHtml) throw new Error("Aucun site généré");
@@ -412,7 +447,7 @@ export async function deployProspectSite(p: Prospect) {
       });
     }
   }
-  await db.update(prospects).set({ deployedUrl: finalUrl, deployStatus: res.mode === "vercel" ? "live" : "simulated", siteSlug: slug, stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
+  await updateWithSlug(p.id, slug, { deployedUrl: finalUrl, deployStatus: res.mode === "vercel" ? "live" : "simulated", stage: "deployed" });
   await markAgentRunEnd("deployer", true);
   await logActivity({
     agentKey: "deployer", action: "deploiement",
@@ -501,7 +536,9 @@ export async function createPaymentLink(p: Prospect) {
     await markAgentRunEnd("paymer", false, res.error);
     throw new Error(res.error);
   }
-  await db.update(prospects).set({ paymentUrl: res.url, paymentStatus: res.simulated ? "simulated" : "pending", stage: "paid", updatedAt: new Date() }).where(eq(prospects.id, p.id));
+  // Le lien créé ≠ payé : le stage "paid" est posé uniquement par le webhook
+  // Whop qui confirme le paiement (sinon les KPI de revenus sont faux).
+  await db.update(prospects).set({ paymentUrl: res.url, paymentStatus: res.simulated ? "simulated" : "pending", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("paymer", true);
 
   // 🧠 Paymer prépare le message d'accompagnement du lien de paiement

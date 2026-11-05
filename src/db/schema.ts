@@ -76,6 +76,7 @@ export const prospects = pgTable("prospects", {
   searchQuery: text("search_query"), // niche + city that found this lead
   aiScore: integer("ai_score"), // potentiel commercial évalué par le cerveau IA
   aiInsight: text("ai_insight"), // analyse de l'agent sur ce lead
+  failCount: integer("fail_count").notNull().default(0), // échecs consécutifs à l'étape courante (auto-pilote)
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

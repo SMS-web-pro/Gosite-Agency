@@ -37,10 +37,14 @@ export async function chatCompletion(params: {
       }),
       signal: AbortSignal.timeout(150000),
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[llm] HTTP ${res.status} (${model}) — appel ${params.system.slice(0, 60)}…`);
+      return null;
+    }
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
     return json.choices?.[0]?.message?.content ?? null;
-  } catch {
+  } catch (err) {
+    console.error("[llm] réseau:", err instanceof Error ? err.message : err);
     return null;
   }
 }

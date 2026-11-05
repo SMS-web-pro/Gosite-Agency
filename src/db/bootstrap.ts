@@ -169,6 +169,10 @@ CREATE TABLE IF NOT EXISTS ai_calls (
 );
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS ai_score integer;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS ai_insight text;
+ALTER TABLE prospects ADD COLUMN IF NOT EXISTS fail_count integer NOT NULL DEFAULT 0;
+-- Unicité des sous-domaines : deux leads homonymes ne doivent jamais écraser
+-- le site l'un de l'autre. Index partiel : plusieurs NULL autorisés.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_site_slug ON prospects (site_slug) WHERE site_slug IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_agent_skills_agent ON agent_skills (agent_key);
 CREATE INDEX IF NOT EXISTS idx_agent_learnings_agent ON agent_learnings (agent_key);
 CREATE INDEX IF NOT EXISTS idx_ai_calls_agent ON ai_calls (agent_key, created_at DESC);

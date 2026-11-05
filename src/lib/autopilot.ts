@@ -4,8 +4,9 @@
 //    interrupteurs auto_pilot / pause de chaque agent.
 
 import { db } from "@/db";
-import { agents, prospects, scoutSchedules, type Agent } from "@/db/schema";
-import { asc, eq } from "drizzle-orm";
+import { agents, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
+import { and, asc, eq, lt } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import { ensureAgentsSeeded } from "./agents";
 import { getSetting } from "./settings";
 import { logActivity } from "./activity";
@@ -22,7 +23,37 @@ export type TickSummary = {
   advanced: Record<string, number>;
   errors: string[];
   evolved?: { agent: string; summary: string; skills: string[] };
+  skipped?: string;
 };
+
+const TICK_LOCK_KEY = "TICK_LOCK";
+const TICK_LOCK_STALE_MS = 10 * 60_000; // un tick planté libère le verrou après 10 min
+
+// Verrou de tick : un seul cycle à la fois (cron + RIO + manuel ne doivent
+// jamais traiter le même batch en parallèle). Claim atomique avec expiration
+// automatique — pas de pg_advisory_lock car le pool ne garantit pas la même
+// connexion entre deux requêtes.
+async function acquireTickLease(): Promise<string | null> {
+  const token = randomUUID();
+  const stale = new Date(Date.now() - TICK_LOCK_STALE_MS);
+  const rows = await db.insert(settings)
+    .values({ key: TICK_LOCK_KEY, value: token, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: token, updatedAt: new Date() },
+      where: lt(settings.updatedAt, stale),
+    })
+    .returning();
+  return rows[0]?.value === token ? token : null;
+}
+
+async function releaseTickLease(token: string): Promise<void> {
+  try {
+    await db.delete(settings).where(and(eq(settings.key, TICK_LOCK_KEY), eq(settings.value, token)));
+  } catch {
+    // Rien : le verrou expire de toute façon après TICK_LOCK_STALE_MS.
+  }
+}
 
 async function agentUsable(key: string, cache: Map<string, Agent>): Promise<boolean> {
   let a = cache.get(key);
@@ -46,8 +77,26 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
   };
   if (!summary.autopilot && !opts.force) return summary;
 
+  const lease = await acquireTickLease();
+  if (!lease) {
+    return { ...summary, skipped: "tick déjà en cours (verrou actif)" };
+  }
+  try {
+    return await runTickBody(summary);
+  } finally {
+    await releaseTickLease(lease);
+  }
+}
+
+async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   const cache = new Map<string, Agent>();
   const bump = (k: string) => { summary.advanced[k] = (summary.advanced[k] ?? 0) + 1; };
+
+  // Auto-réparation : un lead resté en "contacting" (crash en pleine tentative
+  // d'envoi) retourne en "deployed" après 15 min d'inactivité.
+  await db.update(prospects)
+    .set({ stage: "deployed", updatedAt: new Date() })
+    .where(and(eq(prospects.stage, "contacting"), lt(prospects.updatedAt, new Date(Date.now() - 15 * 60_000))));
 
   // ── 1) Missions planifiées ──
   if (await agentUsable("prospector", cache)) {
@@ -90,6 +139,10 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
     for (const p of batch) {
       try {
         await step.fn(p);
+        // Succès : remet le compteur d'échecs à zéro (uniquement si utile).
+        if (p.failCount > 0) {
+          await db.update(prospects).set({ failCount: 0, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+        }
         bump(step.stage);
       } catch (err) {
         const msg = err instanceof Error ? err.message : "?";
@@ -101,6 +154,26 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
             message: `Cycle interrompu pour ${p.businessName} : ${msg}`, level: "warn", prospectId: p.id,
           });
           break; // La config manque → inutile d'essayer les autres leads de cette étape
+        }
+        // Anti poison-loop : un lead qui échoue N fois à la même étape (souvent
+        // une sortie LLM récurrente ou des données pourries) est abandonné
+        // après 3 tentatives au lieu d'être re-payé à chaque tick.
+        const fails = (p.failCount ?? 0) + 1;
+        if (fails >= 3) {
+          await db.update(prospects).set({
+            stage: "rejected", rejectReason: `Abandonné après ${fails} échecs à l'étape ${step.agent} : ${msg}`.slice(0, 300),
+            failCount: fails, updatedAt: new Date(),
+          }).where(eq(prospects.id, p.id));
+          await logActivity({
+            agentKey: "autopilot", action: "lead_abandonne",
+            message: `${p.businessName} abandonné après ${fails} échecs (${step.agent}) : ${msg}`, level: "error", prospectId: p.id,
+          });
+        } else {
+          await db.update(prospects).set({ failCount: fails, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+          await logActivity({
+            agentKey: "autopilot", action: "etape_echec",
+            message: `${p.businessName} — échec ${fails}/3 à l'étape ${step.agent} : ${msg}`, level: "warn", prospectId: p.id,
+          });
         }
       }
     }

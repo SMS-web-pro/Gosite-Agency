@@ -41,7 +41,10 @@ export async function discoverEmail(businessName: string, city: string | null): 
     });
     // Décompte du crédit quoiqu'il arrive (succès, pas de résultat, etc.)
     await db.update(serperKeys).set({ creditsUsed: key.creditsUsed + 1, lastUsedAt: new Date() }).where(eq(serperKeys.id, key.id));
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.warn(`[discover] serper HTTP ${res.status} pour "${businessName}"`);
+      return null;
+    }
 
     const json = (await res.json()) as {
       organic?: { title?: string; snippet?: string }[];
@@ -71,7 +74,8 @@ export async function discoverEmail(businessName: string, city: string | null): 
       level: "info",
     });
     return best;
-  } catch {
+  } catch (err) {
+    console.warn(`[discover] réseau pour "${businessName}":`, err instanceof Error ? err.message : err);
     return null;
   }
 }
