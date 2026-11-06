@@ -14,10 +14,11 @@ export async function GET() {
   // Ne jamais exposer les secrets internes
   delete all.TELEGRAM_WEBHOOK_SECRET;
   delete all.CRON_SECRET;
-  // Mask secrets in listing
+  // Mask secrets in listing. EMAIL_WEBHOOK_SECRET reste lisible : l'opérateur
+  // doit le copier dans le Worker Cloudflare (ce n'est pas un identifiant tiers).
   const masked: Record<string, string> = {};
   for (const [k, v] of Object.entries(all)) {
-    const isSecret = /TOKEN|KEY|SECRET/.test(k);
+    const isSecret = /TOKEN|KEY|SECRET/.test(k) && k !== "EMAIL_WEBHOOK_SECRET";
     masked[k] = v && isSecret ? SECRET_HINT(v) : v;
   }
   return NextResponse.json({ settings: masked });
