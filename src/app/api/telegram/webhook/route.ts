@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse, type NextRequest, after } from "next/server";
 import { handleTelegramUpdate } from "@/lib/telegram";
 import { getSetting } from "@/lib/settings";
 import { ensureSchema } from "@/db/bootstrap";
@@ -24,7 +24,16 @@ export async function POST(req: NextRequest) {
       console.warn(`[telegram] /start refusé : chat inconnu ${incoming}`);
       return NextResponse.json({ ok: true, ignored: "unknown chat" });
     }
-    await handleTelegramUpdate(update);
+    // Réponse 200 IMMÉDIATE : le traitement (LLM + outils, jusqu'à 60 s+) ne
+    // doit pas retarder l'accusé de réception, sinon Telegram raccroche
+    // (« Read timeout expired ») et re-delivre l'update (double réponse RIO).
+    after(async () => {
+      try {
+        await handleTelegramUpdate(update);
+      } catch (err) {
+        console.error("telegram webhook error", err);
+      }
+    });
   } catch (err) {
     console.error("telegram webhook error", err);
   }
