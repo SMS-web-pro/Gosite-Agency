@@ -3,6 +3,7 @@ import { db } from "@/db";
 import { inboundEmails } from "@/db/schema";
 import { getSetting } from "@/lib/settings";
 import { stripHtml, type InboundHeaders } from "@/lib/inbound";
+import { parseRawEmail } from "@/lib/mime";
 import { processInboundRow } from "@/lib/inbound-process";
 import { notifyTelegram } from "@/lib/telegram";
 import { escapeHtml } from "@/lib/format";
@@ -53,23 +54,37 @@ export async function POST(req: NextRequest) {
   const headers: Record<string, string | undefined> = {};
   for (const k of HEADER_KEYS) headers[k] = str(k);
 
-  const text = typeof payload.text === "string" ? payload.text : "";
-  const html = typeof payload.html === "string" ? payload.html : "";
-  const bodyText = text.trim() || stripHtml(html);
-  const inReplyTo = [headers.inReplyTo, headers.references].filter(Boolean).join(" ") || null;
+  // Champs d'enveloppe (Worker sans parser) — servent de fallback si le MIME
+  // brut est absent, tronqué ou illisible.
+  const fallback = {
+    messageId,
+    fromEmail,
+    fromName: typeof payload.fromName === "string" ? payload.fromName : "",
+    subject: typeof payload.subject === "string" ? payload.subject : "",
+    text: typeof payload.text === "string" ? payload.text : "",
+    html: typeof payload.html === "string" ? payload.html : "",
+    headers,
+  };
+
+  // Depuis la révision Worker : le MIME brut en base64 est la source de vérité
+  // (adresses complètes, parties text/html, fil In-Reply-To/References).
+  const parsed = await parseRawEmail(typeof payload.rawB64 === "string" ? payload.rawB64 : undefined, fallback);
+
+  const bodyText = parsed.text.trim() || stripHtml(parsed.html);
+  const inReplyTo = [parsed.headers.inReplyTo, parsed.headers.references].filter(Boolean).join(" ") || null;
 
   // Insertion AVANT tout traitement : dédoublonnage des retries Cloudflare
   // (index unique sur message_id) et trace durable même en cas d'échec.
   const inserted = await db
     .insert(inboundEmails)
     .values({
-      messageId,
-      fromEmail,
-      fromName: typeof payload.fromName === "string" ? payload.fromName : null,
-      subject: typeof payload.subject === "string" ? payload.subject : null,
+      messageId: parsed.messageId || messageId,
+      fromEmail: parsed.fromEmail || fromEmail,
+      fromName: parsed.fromName || null,
+      subject: parsed.subject || null,
       bodyText,
       inReplyTo,
-      headers,
+      headers: parsed.headers,
       status: "new",
     })
     .onConflictDoNothing()

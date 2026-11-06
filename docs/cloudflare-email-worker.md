@@ -24,65 +24,61 @@ Dans l'app : **Réglages & API → Réception — Cloudflare Email → Secret we
 3. **Edit code** : remplace tout par :
 
 ```js
-import PostalMime from "https://esm.sh/postal-mime";
-
-// Colle ici l'URL complète du webhook (avec le secret) :
+// Aucun import : l editeur Cloudflare ne resolve pas les modules distants.
+// Le Worker envoie le MIME brut ; le parsing se fait cote app.
 const WEBHOOK_URL = "https://gosite.digital/api/webhooks/email?secret=COLLE_ICI_LE_SECRET";
 const GMAIL_BOX = "siteup.services@gmail.com";
 
+const toB64 = (bytes) => {
+  let s = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(s);
+};
+
 export default {
   async email(message, env, ctx) {
-    // 1) TOUJOURS forwarder d'abord : la boîte Gmail ne dépend jamais du webhook.
+    // 1) TOUJOURS forwarder d abord : la boite Gmail ne depend jamais du webhook.
     try {
       await message.forward(GMAIL_BOX);
     } catch (e) {
-      console.error("forward gmail échoué", e);
+      console.error("forward gmail echoue", e);
     }
 
-    // 2) Parse + POST au webhook (échecs silencieux : le webhook a son propre retry).
+    // 2) MIME brut -> webhook (le serveur parse : adresses, texte, fil).
     try {
-      const mime = await PostalMime.parse(message.raw);
-      // postal-mime expose headers en TABLEAU de {key, value} (key deja en minuscules)
-      const headers = {};
-      for (const h of mime.headers ?? []) headers[h.key] = h.value;
-      const body = {
-        messageId: mime.messageId || `<${Date.now()}.${Math.random().toString(36).slice(2)}@inbound>`,
-        fromEmail: mime.from?.address || message.from || "",
-        fromName: mime.from?.name || "",
-        subject: mime.subject || "",
-        text: mime.text || "",
-        html: mime.html || "",
-        headers: {
-          autoSubmitted: headers["auto-submitted"],
-          precedence: headers["precedence"],
-          autoReplySuppressed: headers["x-auto-response-suppress"],
-          autorespond: headers["x-autorespond"],
-          listId: headers["list-id"],
-          contentType: headers["content-type"],
-          xFailedRecipients: headers["x-failed-recipients"],
-          inReplyTo: mime.inReplyTo || headers["in-reply-to"],
-          references: mime.references || headers["references"],
-        },
-      };
+      const buf = new Uint8Array(await new Response(message.raw).arrayBuffer());
+      const h = (n) => message.headers.get(n) || undefined;
       ctx.waitUntil(
         fetch(WEBHOOK_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        }).then(async (r) => {
-          if (!r.ok) console.error("webhook HTTP", r.status, await r.text().catch(() => ""));
+          body: JSON.stringify({
+            rawB64: toB64(buf.subarray(0, 3000000)),
+            messageId: h("message-id"),
+            fromEmail: message.from || "",
+            subject: h("subject"),
+            headers: {
+              autoSubmitted: h("auto-submitted"),
+              precedence: h("precedence"),
+              autoReplySuppressed: h("x-auto-response-suppress"),
+              autorespond: h("x-autorespond"),
+              listId: h("list-id"),
+              contentType: h("content-type"),
+              xFailedRecipients: h("x-failed-recipients"),
+            },
+          }),
         }).catch((e) => console.error("webhook fetch", e)),
       );
     } catch (e) {
-      console.error("parse échoué", e);
+      console.error("lecture MIME echouee", e);
     }
   },
 };
 ```
 
 4. Remplace `COLLE_ICI_LE_SECRET` par le secret de l'étape 1. **Deploy**.
-   (L'import passe par **esm.sh** : l'éditeur Cloudflare ne bundle pas les
-   modules npm, une URL absolue est la seule forme fiable.)
 
 ## 3. Router l'adresse vers le Worker
 
