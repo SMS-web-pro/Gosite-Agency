@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Save, Loader2, Bot, BrainCircuit, MailPlus, Triangle, CreditCard, Store,
-  KeyRound, Eye, EyeOff, Shield, Zap, FlaskConical, RefreshCw,
+  KeyRound, Eye, EyeOff, Shield, Zap, FlaskConical, RefreshCw, Inbox,
 } from "lucide-react";
 import { Toast } from "@/components/ui";
 import { SetupWizard } from "@/components/setup-wizard";
@@ -69,6 +69,16 @@ const GROUPS: Group[] = [
       { key: "AGENCY_ADDRESS", label: "Adresse légale (footer emails)", placeholder: "12 rue Exemple, 75000 Ville", hint: "Mention obligatoire dans les emails commerciaux (CAN-SPAM / LCEN)" },
       { key: "OFFER_PRICE", label: "Prix de l'offre", placeholder: "490" },
       { key: "OFFER_CURRENCY", label: "Devise", placeholder: "EUR / MAD / USD" },
+    ],
+  },
+  {
+    title: "Réception — Cloudflare Email", icon: Inbox, color: "#f472b6",
+    desc: "Les réponses clients arrivent sur l'email de réception (Worker Cloudflare) ; Saler, Paymer et Support les lisent et y répondent. Installation : docs/cloudflare-email-worker.md.",
+    fields: [
+      { key: "CONTACT_EMAIL", label: "Email de réception", placeholder: "contact@gosite.digital", hint: "URL webhook du Worker : https://gosite.digital/api/webhooks/email?secret=<Secret webhook>" },
+      { key: "AUTO_REPLY_ENABLED", label: "Réponses automatiques", placeholder: "off", hint: "on|off — off = notifications Telegram seulement (recommandé la première semaine)" },
+      { key: "AUTO_REPLY_HOURLY_CAP", label: "Cap global / heure", placeholder: "20", hint: "Nombre max de réponses automatiques par heure (protection anti-boucle)" },
+      { key: "EMAIL_WEBHOOK_SECRET", label: "Secret webhook", placeholder: "36 caractères hex", secret: true },
     ],
   },
 ];
