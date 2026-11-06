@@ -356,3 +356,54 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
     return { ...content, ok: false, simulated: false, error: err instanceof Error ? err.message : "network" };
   }
 }
+
+// Réponse d'agent (Saler/Paymer/Support) à un message client entrant.
+// Même discipline que l'offre : texte + HTML simples, List-Unsubscribe,
+// footer adresse légale, threading In-Reply-To/References.
+export async function sendAgentReply(params: {
+  to: string;
+  subject: string;
+  bodyText: string;
+  inReplyTo?: string;
+  references?: string;
+}): Promise<{ ok: boolean; simulated?: boolean; messageId?: string; error?: string }> {
+  if (!params.to) return { ok: false, error: "Email destinataire absent" };
+  if (!(await brevoConfigured())) {
+    return { ok: false, error: "Brevo non configuré (BREVO_API_KEY + email expéditeur dans Réglages)" };
+  }
+  const senderEmail = await getSetting("BREVO_SENDER_EMAIL");
+  const agencyAddress = await getSetting("AGENCY_ADDRESS");
+  const footer = agencyAddress
+    ? `\n\n— GoSite Digital\n${agencyAddress}\nRépondez STOP pour ne plus être contacté.`
+    : `\n\n— GoSite Digital\nRépondez STOP pour ne plus être contacté.`;
+  const fullText = params.bodyText + footer;
+  const headers: Record<string, string> = {
+    "List-Unsubscribe": `<mailto:${senderEmail}?subject=STOP>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+  if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
+  if (params.references) headers["References"] = params.references;
+  try {
+    const res = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": await getSetting("BREVO_API_KEY"),
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        sender: { email: senderEmail, name: (await getSetting("BREVO_SENDER_NAME")) || "GoSite Digital" },
+        to: [{ email: params.to }],
+        replyTo: { email: senderEmail },
+        subject: params.subject,
+        textContent: fullText,
+        headers,
+      }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const json = (await res.json()) as { messageId?: string; message?: string };
+    if (!res.ok) return { ok: false, error: json.message ?? `HTTP ${res.status}` };
+    return { ok: true, messageId: json.messageId };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "network" };
+  }
+}

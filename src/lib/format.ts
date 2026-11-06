@@ -1,8 +1,8 @@
 // Conversion du markdown léger produit par le LLM vers du HTML sûr.
 
-function escapeHtml(s: string): string {
-  // Quotes incluses : empêche le breakout d'attribut (href, style) dans le HTML généré.
-  return s
+// Quotes incluses : empêche le breakout d'attribut (href, style) dans le HTML généré.
+export function escapeHtml(s: string | null | undefined): string {
+  return (s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
