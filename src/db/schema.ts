@@ -98,7 +98,7 @@ export const activities = pgTable("activities", {
 // ─────────────────────────────────────────────
 // EMAILS — archive de chaque email envoyé par Saler (objet + corps HTML
 // rendu + statut). Succès ET échecs, pour consultation dans l'app.
-// status: sent | failed | simulated | backfilled
+// status: sent | failed | simulated | backfilled | agent_reply
 // ─────────────────────────────────────────────
 export const emails = pgTable("emails", {
   id: serial("id").primaryKey(),
@@ -109,6 +109,28 @@ export const emails = pgTable("emails", {
   status: text("status").notNull().default("sent"),
   messageId: text("message_id"),
   error: text("error"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// ─────────────────────────────────────────────
+// INBOUND_EMAILS — messages reçus sur l'adresse de réception (Worker
+// Cloudflare). Dédoublonnés par Message-Id (index unique) : les retries
+// Cloudflare ne déclenchent qu'un traitement. Rattachés au prospect par
+// fil (In-Reply-To/References) ou adresse.
+// status: new | replied | ignored | unmatched | optout | human
+// ─────────────────────────────────────────────
+export const inboundEmails = pgTable("inbound_emails", {
+  id: serial("id").primaryKey(),
+  prospectId: integer("prospect_id"),
+  messageId: text("message_id").notNull(),
+  fromEmail: text("from_email").notNull(),
+  fromName: text("from_name"),
+  subject: text("subject"),
+  bodyText: text("body_text").notNull(),
+  inReplyTo: text("in_reply_to"),
+  headers: jsonb("headers").$type<Record<string, string | undefined>>(),
+  status: text("status").notNull().default("new"),
+  attempts: integer("attempts").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

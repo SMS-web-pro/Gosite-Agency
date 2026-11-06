@@ -140,6 +140,23 @@ CREATE TABLE IF NOT EXISTS do_not_contact (
   source text NOT NULL DEFAULT 'manual',
   created_at timestamp NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS inbound_emails (
+  id serial PRIMARY KEY,
+  prospect_id integer,
+  message_id text NOT NULL,
+  from_email text NOT NULL,
+  from_name text,
+  subject text,
+  body_text text NOT NULL,
+  in_reply_to text,
+  headers jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL DEFAULT 'new',
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamp NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_inbound_message_id ON inbound_emails (message_id);
+CREATE INDEX IF NOT EXISTS idx_inbound_prospect ON inbound_emails (prospect_id);
+CREATE INDEX IF NOT EXISTS idx_inbound_from ON inbound_emails (from_email);
 CREATE TABLE IF NOT EXISTS agent_skills (
   id serial PRIMARY KEY,
   agent_key text NOT NULL,
