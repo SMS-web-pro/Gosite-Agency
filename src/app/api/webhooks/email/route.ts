@@ -45,9 +45,6 @@ export async function POST(req: NextRequest) {
 
   const messageId = typeof payload.messageId === "string" ? payload.messageId.trim() : "";
   const fromEmail = typeof payload.fromEmail === "string" ? payload.fromEmail.trim() : "";
-  if (!messageId || !fromEmail) {
-    return NextResponse.json({ error: "messageId et fromEmail requis" }, { status: 400 });
-  }
 
   const rawHeaders = (payload.headers ?? {}) as Record<string, unknown>;
   const str = (k: string) => (typeof rawHeaders[k] === "string" ? (rawHeaders[k] as string) : undefined);
@@ -66,9 +63,13 @@ export async function POST(req: NextRequest) {
     headers,
   };
 
-  // Depuis la révision Worker : le MIME brut en base64 est la source de vérité
-  // (adresses complètes, parties text/html, fil In-Reply-To/References).
+  // Le MIME brut en base64 est la source de vérité (adresses complètes,
+  // parties text/html, fil In-Reply-To/References) — parsé AVANT validation :
+  // l'enveloppe Cloudflare peut être minimale (messageId null, bounce).
   const parsed = await parseRawEmail(typeof payload.rawB64 === "string" ? payload.rawB64 : undefined, fallback);
+  if (!parsed.messageId || !parsed.fromEmail) {
+    return NextResponse.json({ error: "messageId et fromEmail requis (enveloppe ou MIME)" }, { status: 400 });
+  }
 
   const bodyText = parsed.text.trim() || stripHtml(parsed.html);
   const inReplyTo = [parsed.headers.inReplyTo, parsed.headers.references].filter(Boolean).join(" ") || null;
@@ -78,8 +79,8 @@ export async function POST(req: NextRequest) {
   const inserted = await db
     .insert(inboundEmails)
     .values({
-      messageId: parsed.messageId || messageId,
-      fromEmail: parsed.fromEmail || fromEmail,
+      messageId: parsed.messageId,
+      fromEmail: parsed.fromEmail,
       fromName: parsed.fromName || null,
       subject: parsed.subject || null,
       bodyText,
