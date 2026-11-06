@@ -130,6 +130,7 @@ export const inboundEmails = pgTable("inbound_emails", {
   inReplyTo: text("in_reply_to"),
   headers: jsonb("headers").$type<Record<string, string | undefined>>(),
   status: text("status").notNull().default("new"),
+  // status: new | manual | replied | ignored | unmatched | optout | human
   attempts: integer("attempts").notNull().default(0),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

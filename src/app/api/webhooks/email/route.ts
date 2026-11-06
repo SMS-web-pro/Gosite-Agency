@@ -24,12 +24,15 @@ const HEADER_KEYS: (keyof InboundHeaders)[] = [
 
 export async function POST(req: NextRequest) {
   // Secret dédié (distinct de CRON_SECRET) : ?secret= ou header x-webhook-secret.
+  // Fail-closed : sans secret configuré, aucune entrée n'est acceptée (cet
+  // endpoint déclenche de vraies réponses aux vrais clients).
   const secret = process.env.EMAIL_WEBHOOK_SECRET || (await getSetting("EMAIL_WEBHOOK_SECRET"));
-  if (secret) {
-    const provided = req.nextUrl.searchParams.get("secret") || req.headers.get("x-webhook-secret");
-    if (provided !== secret) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: "EMAIL_WEBHOOK_SECRET non configuré (Réglages → Réception)" }, { status: 401 });
+  }
+  const provided = req.nextUrl.searchParams.get("secret") || req.headers.get("x-webhook-secret");
+  if (provided !== secret) {
+    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
   let payload: Record<string, unknown> = {};

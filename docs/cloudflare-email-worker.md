@@ -24,16 +24,11 @@ Dans l'app : **Réglages & API → Réception — Cloudflare Email → Secret we
 3. **Edit code** : remplace tout par :
 
 ```js
-import PostalMime from "postal-mime";
+import PostalMime from "https://esm.sh/postal-mime";
 
 // Colle ici l'URL complète du webhook (avec le secret) :
 const WEBHOOK_URL = "https://gosite.digital/api/webhooks/email?secret=COLLE_ICI_LE_SECRET";
 const GMAIL_BOX = "siteup.services@gmail.com";
-
-const pick = (h, name) => {
-  const v = h.get ? h.get(name) : h[name];
-  return typeof v === "string" ? v : undefined;
-};
 
 export default {
   async email(message, env, ctx) {
@@ -47,10 +42,9 @@ export default {
     // 2) Parse + POST au webhook (échecs silencieux : le webhook a son propre retry).
     try {
       const mime = await PostalMime.parse(message.raw);
+      // postal-mime expose headers en TABLEAU de {key, value} (key deja en minuscules)
       const headers = {};
-      for (const [k, v] of Object.entries(mime.headers ?? {})) {
-        headers[k.toLowerCase()] = typeof v === "string" ? v : v?.value;
-      }
+      for (const h of mime.headers ?? []) headers[h.key] = h.value;
       const body = {
         messageId: mime.messageId || `<${Date.now()}.${Math.random().toString(36).slice(2)}@inbound>`,
         fromEmail: mime.from?.address || message.from || "",
@@ -66,8 +60,8 @@ export default {
           listId: headers["list-id"],
           contentType: headers["content-type"],
           xFailedRecipients: headers["x-failed-recipients"],
-          inReplyTo: headers["in-reply-to"],
-          references: headers["references"],
+          inReplyTo: mime.inReplyTo || headers["in-reply-to"],
+          references: mime.references || headers["references"],
         },
       };
       ctx.waitUntil(
@@ -87,8 +81,8 @@ export default {
 ```
 
 4. Remplace `COLLE_ICI_LE_SECRET` par le secret de l'étape 1. **Deploy**.
-   (Le module `postal-mime` est résolu depuis le CDN via l'import esm —
-   fonctionnel tel quel dans l'éditeur Cloudflare.)
+   (L'import passe par **esm.sh** : l'éditeur Cloudflare ne bundle pas les
+   modules npm, une URL absolue est la seule forme fiable.)
 
 ## 3. Router l'adresse vers le Worker
 

@@ -32,9 +32,16 @@ const QUOTE_MARKERS: RegExp[] = [
   /^On .+ wrote/i,
 ];
 
+// Notre footer cité n'arrive pas toujours en début de ligne (email html-only
+// aplati en une seule ligne) : coupe pleine-ligne en plus des marqueurs ancrés.
+const INLINE_FOOTER = /r[ée]pon[dt](ez|s)?\s*(«\s*)?stop|pour ne plus (être|etre) contact/i;
+
 export function extractNewText(body: string): string {
+  const raw = body ?? "";
+  const footerCut = raw.search(INLINE_FOOTER);
+  const bounded = footerCut > 0 ? raw.slice(0, footerCut) : raw;
   const kept: string[] = [];
-  for (const line of (body ?? "").split("\n")) {
+  for (const line of bounded.split("\n")) {
     const t = line.trim();
     if (QUOTE_MARKERS.some((m) => m.test(t))) break;
     kept.push(line);

@@ -1,4 +1,4 @@
-// Moteur de réponse entrante : transforme un message client reçu (Worker
+﻿// Moteur de réponse entrante : transforme un message client reçu (Worker
 // Cloudflare → webhook → row inbound_emails) en réponse d'agent (Saler /
 // Paymer / Support). Utilisé par le webhook (temps réel) et par le tick
 // (réconciliation des rows "new" échouées). Idempotent par status + attempts.
@@ -143,24 +143,28 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     return { ok: true, status: "optout" };
   }
 
-  // ── Interrupteur : notification seule ───────────────────────────────────
+  // ── Interrupteur : notification seule (statut "manual" — la réconciliation
+  //    ne retrait que les "new", donc pas de re-notification en boucle) ────
   if ((await getSetting("AUTO_REPLY_ENABLED")) !== "on") {
+    await setStatus(id, "manual");
     await notifyTelegram(
       `💬 <b>${escapeHtml(p.businessName)}</b> a répondu :\n${escapeHtml((freshText || row.bodyText).slice(0, 300))}\n<i>Réponses automatiques désactivées — répondez depuis la boîte Gmail.</i>`,
     );
-    return { ok: true, status: "new" };
+    return { ok: true, status: "manual" };
   }
 
   // ── Rate-limits ─────────────────────────────────────────────────────────
   const dayAgo = new Date(Date.now() - 24 * 3600_000);
   const hourAgo = new Date(Date.now() - 3600_000);
+  // Comptés sur l'adresse réellement destinataire de nos réponses (p.email) :
+  // en rattachement par fil, fromEmail peut être un alias différent.
   const perAddress = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(emails)
-    .where(and(eq(emails.status, "agent_reply"), sql`lower(${emails.toEmail}) = ${normalizeEmail(row.fromEmail)}`, gte(emails.createdAt, dayAgo)));
+    .where(and(eq(emails.status, "agent_reply"), sql`lower(${emails.toEmail}) = ${normalizeEmail(p.email)}`, gte(emails.createdAt, dayAgo)));
   if ((perAddress[0]?.n ?? 0) >= RATE_PER_ADDRESS_24H) {
     await setStatus(id, "human");
-    await notifyTelegram(`⚠️ <b>Rate-limit</b> — 2 réponses déjà envoyées à <b>${escapeHtml(row.fromEmail)}</b> en 24 h. Intervention humaine.`);
+    await notifyTelegram(`⚠️ <b>Rate-limit</b> — 2 réponses déjà envoyées à <b>${escapeHtml(p.email)}</b> en 24 h. Intervention humaine.`);
     return { ok: false, status: "human" };
   }
   const cap = parseInt((await getSetting("AUTO_REPLY_HOURLY_CAP")) || "20", 10);
@@ -174,10 +178,21 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     return { ok: false, status: "human" };
   }
 
+  // ── Un seul appel LLM : décision d'agent + réponse ──────────────────────
+  const effectiveText = freshText || row.bodyText;
+  if (!effectiveText.trim()) {
+    // Corps vide (pièce jointe seule…) : un LLM répondrait à côté.
+    await setStatus(id, "human");
+    await notifyTelegram(`⚠️ <b>Réception</b> — message de <b>${escapeHtml(p.businessName)}</b> sans texte exploitable. Intervention humaine.`);
+    return { ok: false, status: "human" };
+  }
+  const lang = langFor(p);
+  const reusePending = p.paymentStatus === "pending" && p.paymentUrl;
+
   // ── Historique de conversation (6 derniers messages, chronologiques) ────
   const [outHist, inHist] = await Promise.all([
     db.select({ subject: emails.subject, createdAt: emails.createdAt, body: emails.bodyHtml }).from(emails).where(eq(emails.prospectId, p.id)).orderBy(desc(emails.createdAt)).limit(6),
-    db.select({ subject: inboundEmails.subject, createdAt: inboundEmails.createdAt, body: inboundEmails.bodyText }).from(inboundEmails).where(and(eq(inboundEmails.prospectId, p.id), inArray(inboundEmails.status, ["replied", "human"]))).orderBy(desc(inboundEmails.createdAt)).limit(6),
+    db.select({ subject: inboundEmails.subject, createdAt: inboundEmails.createdAt, body: inboundEmails.bodyText }).from(inboundEmails).where(and(eq(inboundEmails.prospectId, p.id), inArray(inboundEmails.status, ["replied", "human", "manual"]))).orderBy(desc(inboundEmails.createdAt)).limit(6),
   ]);
   const history = [
     ...outHist.map((m) => ({ dir: "nous", subject: m.subject ?? "", body: stripForHistory(m.body) ?? "", at: m.createdAt })),
@@ -189,9 +204,6 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     .map((m) => `[${m.dir}] ${m.subject || "(sans objet)"} : ${m.body.slice(0, 400)}`)
     .join("\n");
 
-  // ── Un seul appel LLM : décision d'agent + réponse ──────────────────────
-  const lang = langFor(p);
-  const reusePending = p.paymentStatus === "pending" && p.paymentUrl;
   const decision = await agentThinkJson<{ agent: string; reply: string; needsHuman: boolean }>({
     agent: "saler",
     task: "reponse_entrante",
@@ -208,7 +220,7 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
       `Site livré : ${p.deployedUrl ?? "(pas encore)"}`,
       reusePending ? `Lien de paiement actif : ${p.paymentUrl}` : "",
       history ? `Historique :\n${history}` : "",
-      `Message entrant de ${row.fromName || row.fromEmail} :\n${freshText || row.bodyText}`,
+      `Message entrant de ${row.fromName || row.fromEmail} :\n${effectiveText}`,
     ].filter(Boolean).join("\n\n"),
   });
 
@@ -221,7 +233,7 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
   if (!parsed || parsed.needsHuman) {
     await setStatus(id, "human");
     await notifyTelegram(
-      `🙋 <b>Intervention humaine souhaitée</b> — ${escapeHtml(p.businessName)} :\n${escapeHtml((freshText || row.bodyText).slice(0, 300))}${parsed ? `\n<i>Brouillon (${parsed.agent}) : ${escapeHtml(parsed.reply.slice(0, 200))}</i>` : ""}`,
+      `🙋 <b>Intervention humaine souhaitée</b> — ${escapeHtml(p.businessName)} :\n${escapeHtml(effectiveText.slice(0, 300))}${parsed ? `\n<i>Brouillon (${parsed.agent}) : ${escapeHtml(parsed.reply.slice(0, 200))}</i>` : ""}`,
     );
     await logActivity({ agentKey: parsed?.agent ?? "saler", action: "inbound_human", message: `Réponse manuelle requise pour ${p.businessName}`, prospectId: p.id });
     return { ok: true, status: "human" };
@@ -277,7 +289,7 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     prospectId: p.id,
   });
   await notifyTelegram(
-    `🤖 <b>${parsed.agent.charAt(0).toUpperCase() + parsed.agent.slice(1)}</b> → <b>${escapeHtml(p.businessName)}</b>\nClient : « ${escapeHtml((freshText || row.bodyText).slice(0, 160))} »\nRéponse : « ${escapeHtml(reply.slice(0, 160))} »`,
+    `🤖 <b>${parsed.agent.charAt(0).toUpperCase() + parsed.agent.slice(1)}</b> → <b>${escapeHtml(p.businessName)}</b>\nClient : « ${escapeHtml(effectiveText.slice(0, 160))} »\nRéponse : « ${escapeHtml(reply.slice(0, 160))} »`,
   );
   return { ok: true, status: "replied" };
 }

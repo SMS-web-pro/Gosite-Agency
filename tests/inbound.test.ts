@@ -23,6 +23,11 @@ check("extrait: From: coupe", fresh3.includes("Prix ?") && !fresh3.includes("x@y
 const fresh4 = extractNewText("Interessé par la démo\n\nOn Mon, 2 Nov 2026, GoSite wrote:\n> Hello\n");
 check("extrait: wrote: coupe", fresh4.includes("démo") && !fresh4.includes("wrote"));
 check("extrait: corps vide", extractNewText("   \n\n  ") === "");
+// Email html-only : tags → espaces, tout sur une ligne ; le footer cité au
+// milieu doit quand même couper (sinon faux STOP en cascade).
+check("extrait: html-only footer coupe", !extractNewText("Bonjour je veux bien https://x.com voir le site Repondez STOP pour ne plus etre contact").includes("STOP"));
+check("extrait: footer francais accentue coupe", !extractNewText("C est parfait Répondez « STOP » pour ne plus être contacté").includes("STOP"));
+check("extrait: texte avant footer conserve", extractNewText("Interesse Repondez STOP pour ne plus etre contact").includes("Interesse"));
 
 // Fallback html-only
 const stripped = stripHtml("<p>Bonjour <b>max</b></p>");

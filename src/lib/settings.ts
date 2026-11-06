@@ -75,7 +75,6 @@ const DEFAULTS: Partial<Record<SettingKey, string>> = {
   OFFER_PRICE: "490",
   OFFER_CURRENCY: "EUR",
   BREVO_SENDER_NAME: "GoSite Digital",
-  EMAIL_WEBHOOK_SECRET: "0e2be5d3e47f84a66df32e61b19aec3e1023",
 };
 
 // Cache mémoire court (5 s) : getSetting est appelé ~10× par envoi d'email et
