@@ -6,10 +6,12 @@ const COOKIE = "gsd_admin";
 // - /api/cron/tick      → Authorization: Bearer CRON_SECRET (Vercel Cron)
 // - /api/telegram/webhook → header x-telegram-bot-api-secret-token
 // - /api/webhooks/whop  → ?secret=CRON_SECRET (URL configurée dans Whop)
+// - /api/webhooks/email → ?secret=EMAIL_WEBHOOK_SECRET (Worker Cloudflare)
 const PUBLIC_PREFIXES = [
   "/api/cron/tick",
   "/api/telegram/webhook",
   "/api/webhooks/whop",
+  "/api/webhooks/email",
   "/api/login",
 ];
 
