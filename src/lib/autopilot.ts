@@ -4,7 +4,7 @@
 //    interrupteurs auto_pilot / pause de chaque agent.
 
 import { db } from "@/db";
-import { agents, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
+import { agents, inboundEmails, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
 import { and, asc, eq, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ensureAgentsSeeded } from "./agents";
@@ -192,6 +192,35 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     }
   } catch (err) {
     summary.errors.push(`purge: ${err instanceof Error ? err.message : "?"}`);
+  }
+
+  // ── 3b) Réconciliation : entrants restés "new" (échec webhook : LLM lent,
+  //      timeout Brevo…) — retraités ici, 5 max par tick, abandon en "human".
+  try {
+    const stale = await db
+      .select({ id: inboundEmails.id })
+      .from(inboundEmails)
+      .where(and(eq(inboundEmails.status, "new"), lt(inboundEmails.createdAt, new Date(Date.now() - 15 * 60_000))))
+      .limit(5);
+    let reconciled = 0;
+    for (const s of stale) {
+      try {
+        const { processInboundRow } = await import("./inbound-process");
+        const r = await processInboundRow(s.id);
+        if (r.status === "replied") reconciled++;
+      } catch {
+        // compteur d'attempts déjà incrémenté dans processInboundRow
+      }
+    }
+    if (reconciled > 0) {
+      await logActivity({
+        agentKey: "autopilot", action: "inbound_reconcilie",
+        message: `${reconciled} réponse(s) client rattrapée(s) au tick.`,
+        level: "success",
+      });
+    }
+  } catch (err) {
+    summary.errors.push(`reconciliation: ${err instanceof Error ? err.message : "?"}`);
   }
 
   // ── 4) Auto-amélioration : un agent évolue à chaque cycle (rotation) ──
