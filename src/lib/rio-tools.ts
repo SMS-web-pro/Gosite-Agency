@@ -2,7 +2,7 @@
 // Utilisée en function-calling par le LLM, et par le parseur d'intentions de secours.
 
 import { db } from "@/db";
-import { agents, prospects, activities, objectives, leadNotes, scoutSchedules, serperKeys } from "@/db/schema";
+import { agents, prospects, activities, objectives, leadNotes, scoutSchedules, serperKeys, emails, aiCalls, inboundEmails } from "@/db/schema";
 import { and, desc, eq, ilike, or } from "drizzle-orm";
 import { logActivity } from "./activity";
 import {
@@ -51,12 +51,13 @@ export const TOOL_SCHEMAS = [
     type: "function" as const,
     function: {
       name: "delete_leads",
-      description: "Supprime définitivement un ou plusieurs leads. Peut aussi purger tous les leads rejetés avec purge_rejected=true.",
+      description: "Supprime définitivement des leads. all=true : purge TOUT le pipeline (tous les leads + emails + notes + activités + appels IA + entrants — irréversible). purge_rejected=true : purge des rejetés. Sinon ids=[...] précis.",
       parameters: {
         type: "object",
         properties: {
           ids: { type: "array", items: { type: "number" }, description: "IDs à supprimer" },
           purge_rejected: { type: "boolean", description: "supprime tous les leads au stade 'rejected'" },
+          all: { type: "boolean", description: "purge COMPLÈTE du pipeline et de l'historique (irréversible)" },
         },
         required: [],
       },
@@ -308,6 +309,25 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
     }
 
     case "delete_leads": {
+      if (args.all === true) {
+        // Purge complète : enfants (emails, entrants, notes, journaux) puis
+        // prospects. Comptes RÉELS renvoyés à RIO — jamais de succès inventé.
+        const delEmails = await db.delete(emails).returning();
+        const delInbound = await db.delete(inboundEmails).returning();
+        const delNotes = await db.delete(leadNotes).returning();
+        const delCalls = await db.delete(aiCalls).returning();
+        const delActs = await db.delete(activities).returning();
+        const delProspects = await db.delete(prospects).returning();
+        await logActivity({
+          agentKey: "rio", action: "purge_pipeline",
+          message: `Purge complète du pipeline : ${delProspects.length} leads, ${delEmails.length} emails, ${delInbound.length} entrants, ${delNotes.length} notes, ${delActs.length} activités, ${delCalls.length} appels IA.`,
+          level: "warn",
+        });
+        return {
+          ok: true,
+          summary: `Purge complète exécutée et vérifiée : ${delProspects.length} leads, ${delEmails.length} emails, ${delInbound.length} entrants, ${delNotes.length} notes, ${delActs.length} activités, ${delCalls.length} appels IA supprimés.`,
+        };
+      }
       if (args.purge_rejected === true) {
         const rejected = await db.select({ id: prospects.id }).from(prospects).where(eq(prospects.stage, "rejected"));
         await db.delete(prospects).where(eq(prospects.stage, "rejected"));
