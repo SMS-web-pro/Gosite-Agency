@@ -28,7 +28,7 @@ check("A. validateSheet OK sans horaires", validateSheet(base).ok);
 
 // B. AVEC données réelles : la réputation factuelle s'affiche
 const withData = generateSiteHtml({ ...base, GOOGLE_RATING: "4.7", REVIEW_COUNT: "120+", HOURS_WEEKDAY: "Lun-Sam 6h-19h" });
-check("B. réputation présente", withData.includes("avis publics sur Google"));
+check("B. réputation présente", withData.includes("public reviews on Google"));
 check("B. aggregateRating réel", withData.includes("aggregateRating"));
 check("B. rating réel affiché", withData.includes("4.7"));
 check("B. horaires réels affichés", withData.includes("Lun-Sam 6h-19h"));

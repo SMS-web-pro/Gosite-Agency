@@ -4,6 +4,8 @@
 export type NicheContent = {
   match: string[];
   label: string;
+  /** Libellé anglais du métier (sites US/UK). */
+  labelEn: string;
   schemaType: string;
   primary: string;
   accent: string;
@@ -27,6 +29,7 @@ export const NICHES: NicheContent[] = [
   {
     match: ["barber", "barbier", "coiffeur", "salon", "coiffure", "hair"],
     label: "Barbershop / Salon",
+    labelEn: "Barbershop / Salon",
     schemaType: "HairSalon",
     primary: "#1C1C2E", accent: "#C9A96E", neutralBg: "#F8F5EF",
     style: "urban", displayFont: "Fraunces",
@@ -76,6 +79,7 @@ export const NICHES: NicheContent[] = [
   {
     match: ["restaurant", "resto", "pizzeria", "brasserie", "bistrot", "traiteur"],
     label: "Restaurant",
+    labelEn: "Restaurant",
     schemaType: "Restaurant",
     primary: "#1E0E05", accent: "#D4622A", neutralBg: "#FDF4ED",
     style: "warm", displayFont: "DM Serif Display",
@@ -125,6 +129,7 @@ export const NICHES: NicheContent[] = [
   {
     match: ["plombier", "plumber", "plomberie", "chauffage", "hvac"],
     label: "Plombier / Chauffage",
+    labelEn: "Plumbing / Heating",
     schemaType: "Plumber",
     primary: "#0B2545", accent: "#FF6B35", neutralBg: "#F0F4F8",
     style: "bold", displayFont: "Bebas Neue",
@@ -174,6 +179,7 @@ export const NICHES: NicheContent[] = [
   {
     match: ["dentiste", "dentist", "dentaire", "dental"],
     label: "Dentiste / Médical",
+    labelEn: "Dental / Medical",
     schemaType: "Dentist",
     primary: "#103A5E", accent: "#2DBE8F", neutralBg: "#F4FAFF",
     style: "minimal", displayFont: "Syne",
@@ -223,6 +229,7 @@ export const NICHES: NicheContent[] = [
   {
     match: ["gym", "fitness", "salle de sport", "musculation", "crossfit", "sport"],
     label: "Gym / Fitness",
+    labelEn: "Gym / Fitness",
     schemaType: "ExerciseGym",
     primary: "#0A0A0A", accent: "#E53935", neutralBg: "#F2F2F2",
     style: "bold", displayFont: "Bebas Neue",
@@ -272,6 +279,7 @@ export const NICHES: NicheContent[] = [
   {
     match: ["spa", "beauté", "beauty", "esthétique", "institut", "hammam", "massage"],
     label: "Beauty / Spa",
+    labelEn: "Beauty / Spa",
     schemaType: "DaySpa",
     primary: "#2D1B30", accent: "#E8A598", neutralBg: "#FDF7F4",
     style: "luxury", displayFont: "Cormorant Garamond",
@@ -323,6 +331,7 @@ export const NICHES: NicheContent[] = [
 export const DEFAULT_NICHE: NicheContent = {
   match: [],
   label: "Service Local",
+  labelEn: "Local Service",
   schemaType: "LocalBusiness",
   primary: "#1B3A4B", accent: "#27A69A", neutralBg: "#F5F9FA",
   style: "minimal", displayFont: "Syne",

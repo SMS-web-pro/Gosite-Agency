@@ -366,6 +366,8 @@ export async function sendAgentReply(params: {
   bodyText: string;
   inReplyTo?: string;
   references?: string;
+  /** Langue du client (footer STOP localisé) — défaut fr. */
+  lang?: "fr" | "en";
 }): Promise<{ ok: boolean; simulated?: boolean; messageId?: string; error?: string }> {
   if (!params.to) return { ok: false, error: "Email destinataire absent" };
   if (!(await brevoConfigured())) {
@@ -373,9 +375,10 @@ export async function sendAgentReply(params: {
   }
   const senderEmail = await getSetting("BREVO_SENDER_EMAIL");
   const agencyAddress = await getSetting("AGENCY_ADDRESS");
+  const stopLine = params.lang === "en" ? "Reply STOP to stop being contacted." : "Répondez STOP pour ne plus être contacté.";
   const footer = agencyAddress
-    ? `\n\n— GoSite Digital\n${agencyAddress}\nRépondez STOP pour ne plus être contacté.`
-    : `\n\n— GoSite Digital\nRépondez STOP pour ne plus être contacté.`;
+    ? `\n\n— GoSite Digital\n${agencyAddress}\n${stopLine}`
+    : `\n\n— GoSite Digital\n${stopLine}`;
   const fullText = params.bodyText + footer;
   const headers: Record<string, string> = {
     "List-Unsubscribe": `<mailto:${senderEmail}?subject=STOP>`,

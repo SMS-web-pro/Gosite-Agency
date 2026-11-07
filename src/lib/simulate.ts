@@ -1,6 +1,8 @@
 // Simulated Serper results for sandbox mode (no API key configured yet).
 // Generates realistic local-business fiches so the whole pipeline is demoable.
 
+import { resolveMissionGeo } from "./geo";
+
 export type RawPlace = {
   businessName: string;
   businessType: string;
@@ -94,7 +96,11 @@ export function simulatePlaces(niche: string, city: string, count = 12): RawPlac
     `${niche.charAt(0).toUpperCase()}${niche.slice(1)} Pro Services`,
   ];
   const isMA = isMoroccanCity(city);
-  const country = isMA ? "Maroc" : "France";
+  // Pays cohérent avec le résolveur de mission (US/UK → données américaines/anglaises)
+  const geo = resolveMissionGeo(city);
+  const country = geo.country;
+  const isUS = country === "United States";
+  const isUK = country === "United Kingdom";
   const baseLat = isMA ? rnd(31.6, 34.0) : rnd(43.3, 48.9);
   const baseLng = isMA ? rnd(-8.0, -5.5) : rnd(2.3, 7.3);
   const usedNames = new Set<string>();
@@ -115,15 +121,20 @@ export function simulatePlaces(niche: string, city: string, count = 12): RawPlac
     const street = `${Math.floor(rnd(1, 240))} ${pick(STREETS)}`;
     const lat = baseLat + rnd(-0.08, 0.08);
     const lng = baseLng + rnd(-0.08, 0.08);
-    const zip = isMA ? `${Math.floor(rnd(20000, 20600))}` : `${Math.floor(rnd(10000, 95990))}`;
-    const phone = isMA
-      ? `+212 6${Math.floor(rnd(10, 99))} ${Math.floor(rnd(100, 999))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))}`
-      : `+33 ${Math.floor(rnd(1, 7))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))}`;
+    const zip = isUS ? `${Math.floor(rnd(10000, 95990))}` : isUK ? `${Math.floor(rnd(10, 99))}${pick(["AB", "BS", "E", "N", "SE", "SW", "W"])}` : isMA ? `${Math.floor(rnd(20000, 20600))}` : `${Math.floor(rnd(10000, 95990))}`;
+    const phone = isUS
+      ? `+1 ${Math.floor(rnd(200, 999))} ${Math.floor(rnd(100, 999))} ${Math.floor(rnd(1000, 9999))}`
+      : isUK
+        ? `+44 7${Math.floor(rnd(100, 999))} ${Math.floor(rnd(100000, 999999))}`
+        : isMA
+          ? `+212 6${Math.floor(rnd(10, 99))} ${Math.floor(rnd(100, 999))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))}`
+          : `+33 ${Math.floor(rnd(1, 7))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))} ${Math.floor(rnd(10, 99))}`;
 
     // Emails: most qualified leads have one
     const hasEmail = qualified ? Math.random() < 0.8 : Math.random() < 0.4;
+    const tlds = isUS ? ["gmail.com", "outlook.com", "yahoo.com"] : isUK ? ["gmail.com", "outlook.com", "yahoo.co.uk"] : isMA ? ["gmail.com", "outlook.com", "hotmail.fr"] : ["gmail.com", "outlook.fr", "hotmail.com", "yahoo.fr", "gmail.com"];
     const email = hasEmail
-      ? `${slugify(name)}@${pick(["gmail.com", "outlook.fr", "hotmail.com", "yahoo.fr", "gmail.com"])}`
+      ? `${slugify(name)}@${pick(tlds)}`
       : null;
 
     results.push({
@@ -138,7 +149,7 @@ export function simulatePlaces(niche: string, city: string, count = 12): RawPlac
       rating: Math.round(rating * 10) / 10,
       reviewCount,
       hasWebsite,
-      websiteUrl: hasWebsite ? `https://www.${slugify(name)}.${isMA ? "ma" : "fr"}` : null,
+      websiteUrl: hasWebsite ? `https://www.${slugify(name)}.${isUS || isUK ? "com" : isMA ? "ma" : "fr"}` : null,
       mapsLink: `https://www.google.com/maps?q=${lat.toFixed(5)},${lng.toFixed(5)}`,
       lat: +lat.toFixed(5),
       lng: +lng.toFixed(5),

@@ -5,7 +5,9 @@ import { ensureSchema } from "@/db/bootstrap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+// Tour RIO : jusqu'à 3 tours LLM + outils longs (scout complet) — Telegram
+// reçoit le 200 immédiatement, le travail continue dans after().
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   await ensureSchema();

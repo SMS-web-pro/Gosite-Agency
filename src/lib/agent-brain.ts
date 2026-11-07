@@ -203,13 +203,14 @@ FORMAT DE SORTIE IMPÉRATIF :
             { role: "user", content: `${params.instruction}\n\nDONNÉES :\n${params.input}` },
           ],
           temperature: params.temperature ?? 0.5,
-          // Marge de sécurité : une sortie JSON tronquée est inexploitable
-          max_tokens: params.json ? Math.max(params.maxTokens ?? 900, 700) : (params.maxTokens ?? 900),
+          // Modèle de raisonnement : le raisonnement consomme le budget AVANT
+          // le contenu — 900 tokens donnait un content vide (agents muets).
+          max_tokens: params.json ? Math.max(params.maxTokens ?? 2500, 2000) : (params.maxTokens ?? 2500),
           // NOTE : volontairement pas de `response_format` — certains routeurs
           // (dont omniroute) corrompent la sortie avec ce paramètre.
         }),
       },
-      { timeoutMs: 30000, retries: 1, delayMs: 800 }
+      { timeoutMs: 90000, retries: 1, delayMs: 800 }
     );
     if (!res.ok) {
       await trackCall(params.agent, params.task, false, Date.now() - t0, 0);
@@ -362,7 +363,7 @@ Réponds en JSON : {"diagnosis": string, "learnings": string[], "new_skills": [{
 STATISTIQUES : ${successes} succès, ${failures.length} incidents sur ${recent.length} événements.
 JOURNAL RÉCENT :
 ${recent.map((a) => `[${a.level}] ${a.action} — ${a.message}`).join("\n").slice(0, 3500)}`,
-    maxTokens: 1600,
+    maxTokens: 3000,
     temperature: 0.6,
   });
 

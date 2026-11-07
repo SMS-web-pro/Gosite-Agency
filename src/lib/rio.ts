@@ -5,7 +5,7 @@
 
 import { db } from "@/db";
 import { rioMessages } from "@/db/schema";
-import { desc } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getSetting } from "./settings";
 import { TOOL_SCHEMAS, executeTool, type ToolResult } from "./rio-tools";
 import { llmErrorDetail } from "./llm-error";
@@ -79,10 +79,13 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
           messages,
           ...(withTools ? { tools: TOOL_SCHEMAS, tool_choice: "auto" } : {}),
           temperature: 0.4,
-          max_tokens: 1200,
+          // Modèle de raisonnement : les tokens de "reasoning" sont déduits du
+          // budget AVANT le contenu — 1200 suffisait à tout consommer en
+          // raisonnement (content null → RIO muet).
+          max_tokens: 4000,
         }),
       },
-      { timeoutMs: 20000, retries: 1, delayMs: 800 }
+      { timeoutMs: 75000, retries: 1, delayMs: 800 }
     );
     if (!res.ok) {
       return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };
@@ -108,12 +111,16 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
 /* ───────────── Mémoire ───────────── */
 
 export async function loadHistory(channel: string, limit = 14) {
+  // Filtrage par canal EN SQL : sinon on charge les N derniers messages toutes
+  // canaux confondus et la mémoire du chat web se retrouve polluée par Telegram
+  // (et inversement) dès qu'un canal domine en volume.
   const rows = await db
     .select()
     .from(rioMessages)
+    .where(eq(rioMessages.channel, channel))
     .orderBy(desc(rioMessages.createdAt))
     .limit(limit);
-  return rows.reverse().filter((r) => r.channel === channel || channel === "all");
+  return rows.reverse();
 }
 
 async function remember(channel: string, role: string, content: string, toolCalls?: { name: string; args: Record<string, unknown>; result?: string }[]) {
@@ -222,8 +229,9 @@ export async function askRio(userText: string, channel: "web" | "telegram" = "we
 
   const executed: { name: string; args: Record<string, unknown>; summary: string }[] = [];
 
-  // Jusqu'à 4 tours d'outils
-  for (let round = 0; round < 4; round++) {
+  // Jusqu'à 3 tours d'outils (budget temps : 3 × 75 s LLM max, compatible
+  // maxDuration 300 du webhook)
+  for (let round = 0; round < 3; round++) {
     const res = await callLlm(messages, true);
     if (res.error) {
       const turn = await rulesFallback(userText, res.error);

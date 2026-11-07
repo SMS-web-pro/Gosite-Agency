@@ -71,8 +71,9 @@ export const TOOL_SCHEMAS = [
       parameters: {
         type: "object",
         properties: {
-          niche: { type: "string", description: "ex: barbershop, restaurant, plombier, dentiste" },
+          niche: { type: "string", description: "ex: barbershop, restaurant, plombier, dentiste, plumber, dentist" },
           city: { type: "string" },
+          country: { type: "string", description: "optionnel : United States, United Kingdom, France, Maroc (déduit de la ville sinon)" },
           max: { type: "number", description: "nombre de fiches cibles (essaim : 30-60)" },
           strategy: { type: "string", description: "swarm (défaut, essaim de requêtes) | precise (requête unique)" },
         },
@@ -352,8 +353,9 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       if (!niche || !city) return { ok: false, summary: "Il me faut une niche ET une ville." };
       const strategy = str(args.strategy) === "precise" ? "precise" as const : "swarm" as const;
       const max = num(args.max, strategy === "swarm" ? 40 : 12);
+      const country = str(args.country) || undefined;
       try {
-        const r = await runScoutMission(niche, city, Math.min(max, 60), { telegram: false, strategy });
+        const r = await runScoutMission(niche, city, Math.min(max, 60), { telegram: false, strategy, country });
         const v = await runBulkValidation();
         const perQ = (r.queries ?? []).map((q) => `«${q.query}» ${q.kept}`).join(" · ");
         return {

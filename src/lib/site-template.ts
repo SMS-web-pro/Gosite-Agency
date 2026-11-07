@@ -70,12 +70,13 @@ export function generateSiteHtml(d: D): string {
 
   // Section réputation 100% factuelle : note + nombre d'avis RÉELS, lien vers
   // la fiche Google. Aucun témoignage inventé, aucun logo Google trompeur.
+  const publicReviewsLabel = (d.LANG || "fr").startsWith("en") ? "public reviews on Google" : "avis publics sur Google";
   const reputationHtml = hasReviews ? `
       <div class="rep-card" data-aos="zoom-in">
         <div class="rep-score">
           <div class="rep-stars">★★★★★</div>
           <div class="rep-note">${d.GOOGLE_RATING}<span>/5</span></div>
-          <div class="rep-count">${d.REVIEW_COUNT} avis publics sur Google</div>
+          <div class="rep-count">${d.REVIEW_COUNT} ${publicReviewsLabel}</div>
         </div>
         <div class="rep-side">
           <p>La réputation de ${name} se lit sur sa fiche Google : note moyenne de ${d.GOOGLE_RATING}/5 construite sur ${d.REVIEW_COUNT} avis publics laissés par ses clients.</p>
@@ -103,19 +104,11 @@ export function generateSiteHtml(d: D): string {
         <h3>${esc(p.title)}</h3><p>${esc(p.desc)}</p>
       </div>`).join("");
 
-  const trustHtml = niche.trustBadges.map((t) => `<span><i data-lucide="shield-check"></i> ${esc(t)}</span>`).join("");
-  const trustBar = [
-    ["shield-check", niche.trustBadges[0] ?? "Qualité certifiée"],
-    ["timer", "Réponse rapide"],
-    ["star", `${d.GOOGLE_RATING}/5 sur Google`],
-    ["map-pin", `${city} et alentours`],
-  ].map(([i, t]) => `<div class="trust-item"><i data-lucide="${i}"></i><span>${esc(t)}</span></div>`).join("");
-
   const marqueeParts = [
     `☎ ${esc(d.PHONE)}`,
     `&ensp;·&ensp;${esc(d.ADDRESS)}, ${city}`,
     hours ? `&ensp;·&ensp;${esc(hours)}` : "",
-    hasReviews ? `&ensp;·&ensp;★ ${d.GOOGLE_RATING}/5 — ${d.REVIEW_COUNT} avis publics sur Google` : "",
+    hasReviews ? `&ensp;·&ensp;★ ${d.GOOGLE_RATING}/5 — ${d.REVIEW_COUNT} ${publicReviewsLabel}` : "",
     d.TAGLINE ? `&ensp;·&ensp;${d.TAGLINE ? esc(d.TAGLINE) : ""}` : "",
   ].filter(Boolean);
   const marquee = marqueeParts.join("") + "&ensp;·&ensp;";
@@ -138,6 +131,97 @@ export function generateSiteHtml(d: D): string {
   jsonLd.priceRange = "$$";
   jsonLd.currenciesAccepted = d.CURRENCY;
   if (d.EMAIL && d.EMAIL !== "none") jsonLd.email = d.EMAIL;
+
+  // ── Libellés de l'interface du site, dans la langue du lead ──
+  const lang: "fr" | "en" = (d.LANG || "fr").startsWith("en") ? "en" : "fr";
+  const nicheLabel = lang === "en" ? niche.labelEn : niche.label;
+  const T = lang === "en"
+    ? {
+        menu: "Menu",
+        services: "Services", about: "About", work: "Our work", faq: "FAQ", contact: "Contact",
+        publicReviews: "public reviews on Google",
+        callNow: "Call now", directions: "Directions",
+        ourServices: "Our services", servicesH2: "Everything you need, done right",
+        servicesSub: "A complete offering built to last: proven techniques, professional equipment and finishes checked one by one.",
+        teamAtWork: (n: string) => `The ${n} team at work`,
+        googleRating: "Google rating", acrossReviews: (n: string) => `across ${n} reviews`,
+        aboutLabel: "About", aboutH2: "Craftsmanship first, customers at the center",
+        aboutBody: (c: string) => `Based in ${c}, we built our reputation client by client: word of mouth, Google reviews and loyal regulars. No empty talk — clean work, prices quoted up front and a team that knows every regular by name.`,
+        talkToTeam: "Talk to the team", findUs: "Find us",
+        statGoogleRating: "Google rating", statPublicReviews: "Public reviews", statServiceArea: "Service area", statDirect: "Direct", statHours: "Hours", statLocalBusiness: "Local business",
+        processLabel: "How it works", processH2: "Your journey, step by step", processSub: "A simple, transparent process from the first call to after-service follow-up.",
+        galleryLabel: "Our work", galleryH2: "The work speaks for itself",
+        reputationLabel: "Reputation", reputationH2: "What their clients say, on Google",
+        guaranteesLabel: "Our commitments", guaranteesH2: "Written guarantees, not promises",
+        faqLabel: "Common questions", faqH2: "What everyone asks us",
+        ctaH2: "Have a project? Let's talk now.", ctaSub: "A clear answer, a free quote and a team ready to serve you.",
+        contactLabel: "Contact", contactH2: "Drop by or give us a call", contactDetails: "Contact details",
+        directCall: "Direct call, quick answer", reply24: "Reply within 24 business hours", seeGoogle: "See our Google listing",
+        formH3: "Send a message", formSub: "A personal reply within 24 business hours. For emergencies, call directly.",
+        fullName: "Full name *", yourName: "Your name", phone: "Phone", phonePlaceholder: "+1 (555) 000-0000",
+        yourRequest: "Your request *", requestPlaceholder: "Describe what you need in a few words...",
+        consent: "I agree that my data may be used to process my request. *",
+        submit: "Send my request",
+        errName: "Please enter your name", errPhone: "Invalid number", errMsg: "Tell us what you need in a few words", errConsent: "Your consent is required to continue",
+        sending: "Sending...", sent: "Message sent!", sentSub: "We'll reply within 24 business hours.", sendErr: "Something went wrong. Please call us directly at ",
+        navigation: "Navigation", information: "Information",
+        legal: "Legal notice", privacy: "Privacy policy", allRights: "All rights reserved.", crafted: "Website crafted with care.",
+        legalBody: (n: string, a: string) => `<p><strong>${n}</strong> — ${nicheLabel}<br>${a}</p><p>This website is published by ${n} as part of its commercial activity. All content (text, visuals, logo) is the exclusive property of the business and may not be reproduced without written permission.</p><p>Publication director: the business owner. Hosting: professional cloud hosting platform.</p>`,
+        privacyBody: `<p>Data submitted through the contact form (name, phone, message) is used solely to answer your request. It is never sold or shared with third parties.</p><p>Retention: your data is kept for the time needed to process your request, then deleted. Under applicable regulations, you have the right to access, rectify and delete it: a simple call or message is enough.</p><p>This website uses no advertising tracking cookies. The embedded Google Maps map is subject to Google's terms.</p>`,
+        certifiedQuality: "Certified quality", quickReply: "Quick response", andAround: (c: string) => `${c} and surrounding areas`,
+        onGoogle: (r: string) => `${r}/5 on Google`,
+        proudlyServing: (c: string, l: string) => `Trusted ${l} in ${c} — quality work, fair prices, a team that shows up on time.`,
+        inCity: (c: string, l: string) => `${l} in ${c}`,
+        footerLine: (c: string, l: string, r: string) => `Trusted ${l} in ${c}. Google rating ${r}/5.`,
+        call: (n: string) => `Call ${n}`,
+      }
+    : {
+        menu: "Menu",
+        services: "Services", about: "À propos", work: "Réalisations", faq: "FAQ", contact: "Contact",
+        publicReviews: "avis publics sur Google",
+        callNow: "Appeler maintenant", directions: "Itinéraire",
+        ourServices: "Nos services", servicesH2: "Tout ce qu'il faut, fait comme il faut",
+        servicesSub: "Une offre complète pensée pour durer : techniques éprouvées, matériel professionnel et finitions contrôlées une à une.",
+        teamAtWork: (n: string) => `L'équipe ${n} au travail`,
+        googleRating: "note Google", acrossReviews: (n: string) => `sur ${n} avis`,
+        aboutLabel: "À propos", aboutH2: "Le métier avant tout, le client au centre",
+        aboutBody: (c: string) => `Installés à ${c}, nous avons construit notre réputation client après client : bouche-à-oreille, avis Google et fidélité. Pas de discours creux — un travail propre, des prix annoncés à l'avance et une équipe qui connaît chacun de ses habitués.`,
+        talkToTeam: "Parler à l'équipe", findUs: "Nous trouver",
+        statGoogleRating: "Note Google", statPublicReviews: "Avis publics", statServiceArea: "Zone desservie", statDirect: "Direct", statHours: "Horaires", statLocalBusiness: "Entreprise locale",
+        processLabel: "Comment ça se passe", processH2: "Votre parcours, étape par étape", processSub: "Un déroulé simple et transparent, du premier appel au suivi après prestation.",
+        galleryLabel: "Réalisations", galleryH2: "Le travail parle de lui-même",
+        reputationLabel: "Réputation", reputationH2: "Ce que disent ses clients, sur Google",
+        guaranteesLabel: "Nos engagements", guaranteesH2: "Des garanties écrites, pas des promesses",
+        faqLabel: "Questions fréquentes", faqH2: "Ce que tout le monde nous demande",
+        ctaH2: "Un projet ? Parlons-en maintenant.", ctaSub: "Un réponse claire, un devis gratuit et une équipe disponible pour vous servir.",
+        contactLabel: "Contact", contactH2: "Passez nous voir ou appelez-nous", contactDetails: "Coordonnées",
+        directCall: "Appel direct, réponse rapide", reply24: "Réponse sous 24h ouvrées", seeGoogle: "Consultables sur notre fiche Google",
+        formH3: "Envoyer un message", formSub: "Réponse personnalisée sous 24h ouvrées. Pour les urgences, appelez directement.",
+        fullName: "Nom complet *", yourName: "Votre nom", phone: "Téléphone", phonePlaceholder: "+33 6 00 00 00 00",
+        yourRequest: "Votre demande *", requestPlaceholder: "Décrivez votre besoin en quelques mots...",
+        consent: "J'accepte que mes données soient utilisées pour traiter ma demande. *",
+        submit: "Envoyer ma demande",
+        errName: "Merci d'indiquer votre nom", errPhone: "Numéro invalide", errMsg: "Décrivez votre demande en quelques mots", errConsent: "Votre accord est nécessaire pour continuer",
+        sending: "Envoi en cours...", sent: "Message envoyé !", sentSub: "Nous vous répondons sous 24h ouvrées.", sendErr: "Une erreur est survenue. Appelez-nous directement au ",
+        navigation: "Navigation", information: "Informations",
+        legal: "Mentions légales", privacy: "Politique de confidentialité", allRights: "Tous droits réservés.", crafted: "Site réalisé avec soin.",
+        legalBody: (n: string, a: string) => `<p><strong>${n}</strong> — ${nicheLabel}<br>${a}</p><p>Ce site est édité par ${n} dans le cadre de son activité commerciale. L'ensemble des contenus (textes, visuels, logo) est la propriété exclusive de l'établissement et ne peut être reproduit sans autorisation écrite.</p><p>Directeur de la publication : le gérant de l'établissement. Hébergement : plateforme d'hébergement cloud professionnelle.</p>`,
+        privacyBody: `<p>Les données transmises via le formulaire de contact (nom, téléphone, message) sont utilisées exclusivement pour répondre à votre demande. Elles ne sont ni cédées, ni vendues à des tiers.</p><p>Conservation : vos données sont conservées le temps du traitement de la demande, puis supprimées. Conformément à la réglementation en vigueur, vous disposez d'un droit d'accès, de rectification et de suppression : un simple appel ou message suffit.</p><p>Ce site n'utilise pas de cookies de suivi publicitaire. La carte Google Maps intégrée est soumise aux conditions de Google.</p>`,
+        certifiedQuality: "Qualité certifiée", quickReply: "Réponse rapide", andAround: (c: string) => `${c} et alentours`,
+        onGoogle: (r: string) => `${r}/5 sur Google`,
+        proudlyServing: (c: string, l: string) => `${l} à ${c} — ${niche.trustBadges.join(", ").toLowerCase()}.`,
+        inCity: (c: string, l: string) => `${l} à ${c}`,
+        footerLine: (c: string, l: string, r: string) => `${l} de confiance à ${c}. ${niche.trustBadges.join(" · ")}. Note Google ${r}/5.`,
+        call: (n: string) => `Appeler ${n}`,
+      };
+
+  const trustHtml = niche.trustBadges.map((t) => `<span><i data-lucide="shield-check"></i> ${esc(t)}</span>`).join("");
+  const trustBar = [
+    ["shield-check", niche.trustBadges[0] ?? T.certifiedQuality],
+    ["timer", T.quickReply],
+    ["star", T.onGoogle(d.GOOGLE_RATING)],
+    ["map-pin", T.andAround(city)],
+  ].map(([i, t]) => `<div class="trust-item"><i data-lucide="${i}"></i><span>${esc(t)}</span></div>`).join("");
 
   return `<!DOCTYPE html>
 <html lang="${d.LANG || "fr"}"${rtl ? ' dir="rtl"' : ""}>
@@ -428,33 +512,33 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
   <div class="container nav-inner">
     <a href="#hero" class="logo">${name.split(" ").map((w, i) => i === 0 ? esc(w) : `<span>${esc(w)}</span>`).join(" ")}</a>
     <div class="nav-links">
-      <a href="#services" class="nav-link">Services</a>
-      <a href="#about" class="nav-link">À propos</a>
-      <a href="#gallery" class="nav-link">Réalisations</a>
-      <a href="#faq" class="nav-link">FAQ</a>
-      <a href="#contact" class="nav-link">Contact</a>
+      <a href="#services" class="nav-link">${T.services}</a>
+      <a href="#about" class="nav-link">${T.about}</a>
+      <a href="#gallery" class="nav-link">${T.work}</a>
+      <a href="#faq" class="nav-link">${T.faq}</a>
+      <a href="#contact" class="nav-link">${T.contact}</a>
       <a href="tel:${tel}" class="nav-cta"><i data-lucide="phone"></i> ${esc(d.PHONE)}</a>
     </div>
-    <button class="burger" aria-label="Menu"><span></span><span></span><span></span></button>
+    <button class="burger" aria-label="${T.menu}"><span></span><span></span><span></span></button>
   </div>
 </nav>
 <div class="mobile-menu">
-  <a href="#services">Services</a><a href="#about">À propos</a><a href="#gallery">Réalisations</a><a href="#faq">FAQ</a><a href="#contact">Contact</a>
+  <a href="#services">${T.services}</a><a href="#about">${T.about}</a><a href="#gallery">${T.work}</a><a href="#faq">${T.faq}</a><a href="#contact">${T.contact}</a>
 </div>
 
 <section id="hero">
   <div class="hero-bg">
-    <img src="${d.HERO_IMAGE_URL}" alt="${name} — ${esc(niche.label)} à ${city}" loading="eager" fetchpriority="high">
+    <img src="${d.HERO_IMAGE_URL}" alt="${name} — ${esc(nicheLabel)} ${lang === "en" ? "in" : "à"} ${city}" loading="eager" fetchpriority="high">
     <div class="hero-overlay"></div>
     <div class="hero-pattern"></div>
   </div>
   <div class="hero-content container">
-    ${hasReviews ? `<div class="hero-badge" data-aos="fade-down"><span class="stars">★★★★★</span><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis publics sur Google</span></div>` : ""}
+    ${hasReviews ? `<div class="hero-badge" data-aos="fade-down"><span class="stars">★★★★★</span><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} ${T.publicReviews}</span></div>` : ""}
     <h1 data-aos="fade-up" data-aos-delay="100">${esc(d.TAGLINE)}</h1>
-    <p class="hero-sub" data-aos="fade-up" data-aos-delay="200">${esc(niche.taglineTemplates[0])} à ${city} — ${esc(niche.trustBadges.join(", ").toLowerCase())}.</p>
+    <p class="hero-sub" data-aos="fade-up" data-aos-delay="200">${T.proudlyServing(city, nicheLabel)}</p>
     <div class="hero-ctas" data-aos="fade-up" data-aos-delay="300">
-      <a href="tel:${tel}" class="btn btn-primary btn-pulse"><i data-lucide="phone"></i> Appeler maintenant</a>
-      <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-outline-white"><i data-lucide="map-pin"></i> Itinéraire</a>
+      <a href="tel:${tel}" class="btn btn-primary btn-pulse"><i data-lucide="phone"></i> ${T.callNow}</a>
+      <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-outline-white"><i data-lucide="map-pin"></i> ${T.directions}</a>
     </div>
     <div class="hero-trust" data-aos="fade-up" data-aos-delay="400">${trustHtml}${hours ? `<span><i data-lucide="clock"></i> ${esc(hours)}</span>` : ""}</div>
   </div>
@@ -466,9 +550,9 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 <section id="services" class="section section-alt">
   <div class="section-pattern"></div>
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Nos services</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Tout ce qu'il faut, fait comme il faut</h2>
-    <p class="section-sub" data-aos="fade-up" data-aos-delay="150">Une offre complète pensée pour durer : techniques éprouvées, matériel professionnel et finitions contrôlées une à une.</p>
+    <div class="section-label" data-aos="fade-up">${T.ourServices}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.servicesH2}</h2>
+    <p class="section-sub" data-aos="fade-up" data-aos-delay="150">${T.servicesSub}</p>
     <div class="services-grid">${servicesHtml}</div>
   </div>
 </section>
@@ -478,22 +562,22 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
     <div class="about-grid">
       <div class="about-visual" data-aos="fade-right">
         <div class="about-image-frame">
-          <img src="${d.ABOUT_IMAGE_URL}" alt="L'équipe ${name} au travail" loading="lazy">
-          ${hasReviews ? `<div class="about-badge-float"><div class="badge-number">${d.GOOGLE_RATING}</div><div class="badge-text">note Google<br>sur ${d.REVIEW_COUNT} avis</div></div>` : ""}
+          <img src="${d.ABOUT_IMAGE_URL}" alt="${T.teamAtWork(name)}" loading="lazy">
+          ${hasReviews ? `<div class="about-badge-float"><div class="badge-number">${d.GOOGLE_RATING}</div><div class="badge-text">${T.googleRating}<br>${T.acrossReviews(d.REVIEW_COUNT)}</div></div>` : ""}
         </div>
-        <div class="about-accent-block"><i data-lucide="${niche.icon}"></i><span>${niche.label.toLowerCase()} à ${city}</span></div>
+        <div class="about-accent-block"><i data-lucide="${niche.icon}"></i><span>${T.inCity(city, nicheLabel.toLowerCase())}</span></div>
       </div>
       <div class="about-text" data-aos="fade-left" data-aos-delay="150">
-        <div class="section-label">À propos</div>
-        <h2>Le métier avant tout, le client au centre</h2>
+        <div class="section-label">${T.aboutLabel}</div>
+        <h2>${T.aboutH2}</h2>
         <p class="about-lead">${esc(d.DESCRIPTION)}</p>
-        <p>Installés à ${city}, nous avons construit notre réputation client après client : bouche-à-oreille, avis Google et fidélité. Pas de discours creux — un travail propre, des prix annoncés à l'avance et une équipe qui connaît chacun de ses habitués.</p>
+        <p>${T.aboutBody(city)}</p>
         <ul class="about-checklist">
           ${niche.guarantees.map((g) => `<li><i data-lucide="check-circle-2"></i> ${esc(g.title)} — ${esc(g.desc)}</li>`).join("")}
         </ul>
         <div class="about-cta">
-          <a href="tel:${tel}" class="btn btn-dark"><i data-lucide="phone-call"></i> Parler à l'équipe</a>
-          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-outline"><i data-lucide="map-pin"></i> Nous trouver</a>
+          <a href="tel:${tel}" class="btn btn-dark"><i data-lucide="phone-call"></i> ${T.talkToTeam}</a>
+          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-outline"><i data-lucide="map-pin"></i> ${T.findUs}</a>
         </div>
       </div>
     </div>
@@ -505,28 +589,28 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
   <div class="container">
     <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
       ${hasReviews ? `
-      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="star"></i></div><div class="stat-number" data-count="${Math.round(rating * 10)}" data-decimal="1">0</div><div class="stat-label">Note Google</div></div>
-      <div class="stat-item" data-aos="zoom-in" data-aos-delay="100"><div class="stat-icon"><i data-lucide="message-square-quote"></i></div><div class="stat-number" data-count="${reviews}" data-suffix="+">0</div><div class="stat-label">Avis publics</div></div>` : `
-      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="map-pin"></i></div><div class="stat-number" style="font-size:clamp(1.6rem,3vw,2.4rem)">${city}</div><div class="stat-label">Zone desservie</div></div>`}
-      <div class="stat-item" data-aos="zoom-in" data-aos-delay="200"><div class="stat-icon"><i data-lucide="phone-call"></i></div><div class="stat-number" style="font-size:clamp(1.6rem,3vw,2.4rem)">Direct</div><div class="stat-label">${esc(d.PHONE)}</div></div>
-      <div class="stat-item" data-aos="zoom-in" data-aos-delay="300"><div class="stat-icon"><i data-lucide="clock"></i></div><div class="stat-number" style="font-size:clamp(1.3rem,2.6vw,2rem)">${hours ? esc(hours) : "Local"}</div><div class="stat-label">${hours ? "Horaires" : "Entreprise locale"}</div></div>
+      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="star"></i></div><div class="stat-number" data-count="${Math.round(rating * 10)}" data-decimal="1">0</div><div class="stat-label">${T.statGoogleRating}</div></div>
+      <div class="stat-item" data-aos="zoom-in" data-aos-delay="100"><div class="stat-icon"><i data-lucide="message-square-quote"></i></div><div class="stat-number" data-count="${reviews}" data-suffix="+">0</div><div class="stat-label">${T.statPublicReviews}</div></div>` : `
+      <div class="stat-item" data-aos="zoom-in"><div class="stat-icon"><i data-lucide="map-pin"></i></div><div class="stat-number" style="font-size:clamp(1.6rem,3vw,2.4rem)">${city}</div><div class="stat-label">${T.statServiceArea}</div></div>`}
+      <div class="stat-item" data-aos="zoom-in" data-aos-delay="200"><div class="stat-icon"><i data-lucide="phone-call"></i></div><div class="stat-number" style="font-size:clamp(1.6rem,3vw,2.4rem)">${T.statDirect}</div><div class="stat-label">${esc(d.PHONE)}</div></div>
+      <div class="stat-item" data-aos="zoom-in" data-aos-delay="300"><div class="stat-icon"><i data-lucide="clock"></i></div><div class="stat-number" style="font-size:clamp(1.3rem,2.6vw,2rem)">${hours ? esc(hours) : "Local"}</div><div class="stat-label">${hours ? T.statHours : T.statLocalBusiness}</div></div>
     </div>
   </div>
 </section>
 
 <section id="process" class="section">
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Comment ça se passe</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Votre parcours, étape par étape</h2>
-    <p class="section-sub" data-aos="fade-up" data-aos-delay="150">Un déroulé simple et transparent, du premier appel au suivi après prestation.</p>
+    <div class="section-label" data-aos="fade-up">${T.processLabel}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.processH2}</h2>
+    <p class="section-sub" data-aos="fade-up" data-aos-delay="150">${T.processSub}</p>
     <div class="process-grid">${processHtml}</div>
   </div>
 </section>
 
 <section id="gallery" class="section section-alt">
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Réalisations</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Le travail parle de lui-même</h2>
+    <div class="section-label" data-aos="fade-up">${T.galleryLabel}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.galleryH2}</h2>
     <div class="gallery-grid">${galleryHtml}</div>
   </div>
 </section>
@@ -534,8 +618,8 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 ${reputationHtml ? `
 <section id="testimonials" class="section">
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Réputation</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Ce que disent ses clients, sur Google</h2>
+    <div class="section-label" data-aos="fade-up">${T.reputationLabel}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.reputationH2}</h2>
     <div class="rep-wrap">${reputationHtml}</div>
   </div>
 </section>` : ""}
@@ -543,16 +627,16 @@ ${reputationHtml ? `
 <section id="guarantees" class="section section-alt">
   <div class="section-pattern"></div>
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Nos engagements</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Des garanties écrites, pas des promesses</h2>
+    <div class="section-label" data-aos="fade-up">${T.guaranteesLabel}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.guaranteesH2}</h2>
     <div class="guarantees-grid">${guaranteesHtml}</div>
   </div>
 </section>
 
 <section id="faq" class="section">
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Questions fréquentes</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Ce que tout le monde nous demande</h2>
+    <div class="section-label" data-aos="fade-up">${T.faqLabel}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.faqH2}</h2>
     <div class="faq-grid">
       <div>${faqCol(faqItems.slice(0, half))}</div>
       <div>${faqCol(faqItems.slice(half))}</div>
@@ -562,36 +646,36 @@ ${reputationHtml ? `
 
 <section id="cta-banner">
   <div class="container" data-aos="zoom-in">
-    <h2>Un projet ? Parlons-en maintenant.</h2>
-    <p>Un réponse claire, un devis gratuit et une équipe disponible pour vous servir.</p>
+    <h2>${T.ctaH2}</h2>
+    <p>${T.ctaSub}</p>
     <a href="tel:${tel}" class="btn btn-primary btn-pulse"><i data-lucide="phone"></i> ${esc(d.PHONE)}</a>
   </div>
 </section>
 
 <section id="contact" class="section section-alt">
   <div class="container">
-    <div class="section-label" data-aos="fade-up">Contact</div>
-    <h2 data-aos="fade-up" data-aos-delay="100">Passez nous voir ou appelez-nous</h2>
+    <div class="section-label" data-aos="fade-up">${T.contactLabel}</div>
+    <h2 data-aos="fade-up" data-aos-delay="100">${T.contactH2}</h2>
     <div class="contact-grid">
       <div class="contact-info-card" data-aos="fade-right">
-        <h3>Coordonnées</h3>
-        <div class="contact-line"><i data-lucide="phone"></i><div><a href="tel:${tel}">${esc(d.PHONE)}</a><small>Appel direct, réponse rapide</small></div></div>
-        ${d.EMAIL && d.EMAIL !== "none" ? `<div class="contact-line"><i data-lucide="mail"></i><div><a href="mailto:${esc(d.EMAIL)}">${esc(d.EMAIL)}</a><small>Réponse sous 24h ouvrées</small></div></div>` : ""}
+        <h3>${T.contactDetails}</h3>
+        <div class="contact-line"><i data-lucide="phone"></i><div><a href="tel:${tel}">${esc(d.PHONE)}</a><small>${T.directCall}</small></div></div>
+        ${d.EMAIL && d.EMAIL !== "none" ? `<div class="contact-line"><i data-lucide="mail"></i><div><a href="mailto:${esc(d.EMAIL)}">${esc(d.EMAIL)}</a><small>${T.reply24}</small></div></div>` : ""}
         <div class="contact-line"><i data-lucide="map-pin"></i><div><a href="${d.MAPS_LINK}" target="_blank" rel="noopener">${esc(d.ADDRESS)}, ${esc(d.ZIP)} ${city}</a><small>${esc(d.COUNTRY)}</small></div></div>
         ${hours ? `<div class="contact-line"><i data-lucide="clock"></i><div><span>${esc(hours)}</span><small>${esc(d.HOURS_SAT)} · ${esc(d.HOURS_SUN)}</small></div></div>` : ""}
-        ${hasReviews ? `<div class="contact-line"><i data-lucide="star"></i><div><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} avis publics Google</span><small>Consultables sur notre fiche Google</small></div></div>` : ""}
+        ${hasReviews ? `<div class="contact-line"><i data-lucide="star"></i><div><span>${d.GOOGLE_RATING}/5 · ${d.REVIEW_COUNT} ${T.publicReviews}</span><small>${T.seeGoogle}</small></div></div>` : ""}
         <div class="map-frame"><iframe src="${d.MAPS_EMBED}" loading="lazy" title="Carte ${name}" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
       </div>
       <!-- Branchez votre endpoint Formspree : remplacez l'action ci-dessous par https://formspree.io/f/VOTRE_ID -->
       <form id="contact-form" action="https://formspree.io/f/FORMSPREE_ID" method="POST" data-aos="fade-left" data-aos-delay="150">
-        <h3>Envoyer un message</h3>
-        <p>Réponse personnalisée sous 24h ouvrées. Pour les urgences, appelez directement.</p>
-        <div class="f-group"><label for="f-name">Nom complet *</label><input id="f-name" name="name" type="text" autocomplete="name" placeholder="Votre nom"><span class="field-error" id="error-name"></span></div>
-        <div class="f-group"><label for="f-phone">Téléphone</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" placeholder="+33 6 00 00 00 00"><span class="field-error" id="error-phone"></span></div>
-        <div class="f-group"><label for="f-msg">Votre demande *</label><textarea id="f-msg" name="message" placeholder="Décrivez votre besoin en quelques mots..."></textarea><span class="field-error" id="error-message"></span></div>
-        <label class="f-consent"><input type="checkbox" name="consent"><span>J'accepte que mes données soient utilisées pour traiter ma demande. *</span></label>
+        <h3>${T.formH3}</h3>
+        <p>${T.formSub}</p>
+        <div class="f-group"><label for="f-name">${T.fullName}</label><input id="f-name" name="name" type="text" autocomplete="name" placeholder="${T.yourName}"><span class="field-error" id="error-name"></span></div>
+        <div class="f-group"><label for="f-phone">${T.phone}</label><input id="f-phone" name="phone" type="tel" autocomplete="tel" placeholder="${T.phonePlaceholder}"><span class="field-error" id="error-phone"></span></div>
+        <div class="f-group"><label for="f-msg">${T.yourRequest}</label><textarea id="f-msg" name="message" placeholder="${T.requestPlaceholder}"></textarea><span class="field-error" id="error-message"></span></div>
+        <label class="f-consent"><input type="checkbox" name="consent"><span>${T.consent}</span></label>
         <span class="field-error" id="error-consent"></span>
-        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center"><i data-lucide="send"></i> Envoyer ma demande</button>
+        <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center"><i data-lucide="send"></i> ${T.submit}</button>
         <div class="form-error-global"></div>
       </form>
     </div>
@@ -603,50 +687,46 @@ ${reputationHtml ? `
     <div class="footer-grid">
       <div>
         <div class="footer-logo">${name} <span>.</span></div>
-        <p>${esc(niche.label)} de confiance à ${city}. ${esc(niche.trustBadges.join(" · "))}. Note Google ${d.GOOGLE_RATING}/5.</p>
+        <p>${T.footerLine(city, nicheLabel, d.GOOGLE_RATING)}</p>
       </div>
       <div>
-        <h4>Navigation</h4>
-        <ul><li><a href="#services">Services</a></li><li><a href="#about">À propos</a></li><li><a href="#gallery">Réalisations</a></li><li><a href="#faq">FAQ</a></li><li><a href="#contact">Contact</a></li></ul>
+        <h4>${T.navigation}</h4>
+        <ul><li><a href="#services">${T.services}</a></li><li><a href="#about">${T.about}</a></li><li><a href="#gallery">${T.work}</a></li><li><a href="#faq">${T.faq}</a></li><li><a href="#contact">${T.contact}</a></li></ul>
       </div>
       <div>
-        <h4>Informations</h4>
+        <h4>${T.information}</h4>
         <ul>
           <li><a href="tel:${tel}">${esc(d.PHONE)}</a></li>
           ${d.EMAIL && d.EMAIL !== "none" ? `<li><a href="mailto:${esc(d.EMAIL)}">${esc(d.EMAIL)}</a></li>` : ""}
           <li><a href="${d.MAPS_LINK}" target="_blank" rel="noopener">${esc(d.ADDRESS)}, ${city}</a></li>
-          <li><a href="#" data-modal="legalLink">Mentions légales</a></li>
-          <li><a href="#" data-modal="privacyLink">Politique de confidentialité</a></li>
+          <li><a href="#" data-modal="legalLink">${T.legal}</a></li>
+          <li><a href="#" data-modal="privacyLink">${T.privacy}</a></li>
         </ul>
       </div>
     </div>
     <div class="footer-bottom">
-      <span>© ${new Date().getFullYear()} ${name} — Tous droits réservés.</span>
-      <span>Site réalisé avec soin.<a href="#" data-modal="legalLink">Mentions légales</a><a href="#" data-modal="privacyLink">Confidentialité</a></span>
+      <span>© ${new Date().getFullYear()} ${name} — ${T.allRights}</span>
+      <span>${T.crafted}<a href="#" data-modal="legalLink">${T.legal}</a><a href="#" data-modal="privacyLink">${T.privacy}</a></span>
     </div>
   </div>
 </footer>
 
-<a id="float-cta" href="tel:${tel}" aria-label="Appeler ${name}"><i data-lucide="phone"></i></a>
+<a id="float-cta" href="tel:${tel}" aria-label="${T.call(name)}"><i data-lucide="phone"></i></a>
 
 <div class="modal" id="legalModal" role="dialog" aria-modal="true">
   <div class="modal-overlay"></div>
   <div class="modal-box">
-    <button class="modal-close" aria-label="Fermer"><i data-lucide="x"></i></button>
-    <h3>Mentions légales</h3>
-    <p><strong>${name}</strong> — ${esc(niche.label)}<br>${esc(d.ADDRESS)}, ${esc(d.ZIP)} ${city}, ${esc(d.COUNTRY)}<br>Téléphone : ${esc(d.PHONE)}${d.EMAIL && d.EMAIL !== "none" ? `<br>Email : ${esc(d.EMAIL)}` : ""}</p>
-    <p>Ce site est édité par ${name} dans le cadre de son activité commerciale. L'ensemble des contenus (textes, visuels, logo) est la propriété exclusive de l'établissement et ne peut être reproduit sans autorisation écrite.</p>
-    <p>Directeur de la publication : le gérant de l'établissement. Hébergement : plateforme d'hébergement cloud professionnelle.</p>
+    <button class="modal-close" aria-label="${T.menu}"><i data-lucide="x"></i></button>
+    <h3>${T.legal}</h3>
+    ${T.legalBody(name, `${esc(d.ADDRESS)}, ${esc(d.ZIP)} ${city}, ${esc(d.COUNTRY)}<br>${lang === "en" ? "Phone" : "Téléphone"} : ${esc(d.PHONE)}${d.EMAIL && d.EMAIL !== "none" ? `<br>${lang === "en" ? "Email" : "Email"} : ${esc(d.EMAIL)}` : ""}`)}
   </div>
 </div>
 <div class="modal" id="privacyModal" role="dialog" aria-modal="true">
   <div class="modal-overlay"></div>
   <div class="modal-box">
-    <button class="modal-close" aria-label="Fermer"><i data-lucide="x"></i></button>
-    <h3>Politique de confidentialité</h3>
-    <p>Les données transmises via le formulaire de contact (nom, téléphone, message) sont utilisées exclusivement pour répondre à votre demande. Elles ne sont ni cédées, ni vendues à des tiers.</p>
-    <p>Conservation : vos données sont conservées le temps du traitement de la demande, puis supprimées. Conformément à la réglementation en vigueur, vous disposez d'un droit d'accès, de rectification et de suppression : un simple appel ou message suffit.</p>
-    <p>Ce site n'utilise pas de cookies de suivi publicitaire. La carte Google Maps intégrée est soumise aux conditions de Google.</p>
+    <button class="modal-close" aria-label="${T.menu}"><i data-lucide="x"></i></button>
+    <h3>${T.privacy}</h3>
+    ${T.privacyBody}
   </div>
 </div>
 
@@ -670,16 +750,16 @@ const App={
   initForm(){const form=document.querySelector('#contact-form');if(!form)return;form.addEventListener('submit',async(e)=>{e.preventDefault();
     const name=form.querySelector('[name="name"]');const phone=form.querySelector('[name="phone"]');const msg=form.querySelector('[name="message"]');const consent=form.querySelector('[name="consent"]');
     form.querySelectorAll('.field-error').forEach((el)=>el.textContent='');let errs=0;
-    if(!name.value.trim()||name.value.trim().length<2){errs++;form.querySelector('#error-name').textContent='Merci d\\'indiquer votre nom';}
-    if(phone.value&&!/^[0-9 +\\-().]{7,}$/.test(phone.value)){errs++;form.querySelector('#error-phone').textContent='Numéro invalide';}
-    if(!msg.value.trim()||msg.value.trim().length<10){errs++;form.querySelector('#error-message').textContent='Décrivez votre demande en quelques mots';}
-    if(!consent.checked){errs++;form.querySelector('#error-consent').textContent='Votre accord est nécessaire pour continuer';}
+    if(!name.value.trim()||name.value.trim().length<2){errs++;form.querySelector('#error-name').textContent='${T.errName.replace(/'/g, "\\'")}';}
+    if(phone.value&&!/^[0-9 +\\-().]{7,}$/.test(phone.value)){errs++;form.querySelector('#error-phone').textContent='${T.errPhone}';}
+    if(!msg.value.trim()||msg.value.trim().length<10){errs++;form.querySelector('#error-message').textContent='${T.errMsg}';}
+    if(!consent.checked){errs++;form.querySelector('#error-consent').textContent='${T.errConsent}';}
     if(errs>0)return;
-    const btn=form.querySelector('[type="submit"]');const orig=btn.innerHTML;btn.innerHTML='Envoi en cours...';btn.disabled=true;
+    const btn=form.querySelector('[type="submit"]');const orig=btn.innerHTML;btn.innerHTML='${T.sending}';btn.disabled=true;
     try{const res=await fetch(form.action,{method:'POST',headers:{'Accept':'application/json'},body:new FormData(form)});
-      if(res.ok){form.innerHTML='<div class="form-success"><i data-lucide="check-circle-2"></i><h3>Message envoyé !</h3><p>Nous vous répondons sous 24h ouvrées.</p></div>';lucide.createIcons();}
+      if(res.ok){form.innerHTML='<div class="form-success"><i data-lucide="check-circle-2"></i><h3>${T.sent}</h3><p>${T.sentSub}</p></div>';lucide.createIcons();}
       else{throw new Error();}
-    }catch{btn.innerHTML=orig;btn.disabled=false;form.querySelector('.form-error-global').textContent='Une erreur est survenue. Appelez-nous directement au '+ '${esc(d.PHONE)}';}
+    }catch{btn.innerHTML=orig;btn.disabled=false;form.querySelector('.form-error-global').textContent='${T.sendErr}' + '${esc(d.PHONE)}';}
   });},
   start(){this.initAOS();this.initCounters();this.initNav();this.initParallax();this.initFAQ();this.initModals();this.initForm();if(window.lucide)lucide.createIcons();}
 };

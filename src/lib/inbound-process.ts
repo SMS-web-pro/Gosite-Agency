@@ -208,7 +208,7 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     agent: "saler",
     task: "reponse_entrante",
     lang,
-    maxTokens: 600,
+    maxTokens: 2500,
     instruction: [
       `Tu réponds à un email entrant d'un client de l'agence GoSite Digital. Langue imposée : ${lang === "en" ? "anglais" : "français"}.`,
       `Choisis l'agent qui signe : "saler" (questions sur le service, négociation), "paymer" (le client accepte ou veut payer), "support" (problème technique, FAQ).`,
@@ -263,6 +263,7 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     bodyText: reply,
     inReplyTo: row.messageId,
     references: row.inReplyTo || undefined,
+    lang,
   });
   if (!sent.ok) {
     await setStatus(id, "new");

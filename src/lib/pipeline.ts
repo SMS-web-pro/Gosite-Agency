@@ -42,17 +42,17 @@ export async function runScoutMission(
   niche: string,
   city: string,
   maxResults = 30,
-  opts: { telegram?: boolean; strategy?: "precise" | "swarm" } = {},
+  opts: { telegram?: boolean; strategy?: "precise" | "swarm"; country?: string } = {},
 ) {
   await ensureAgentsSeeded();
   const strategy = opts.strategy ?? "swarm";
   await markAgentRunStart("prospector");
   await logActivity({
     agentKey: "prospector", action: "mission_demarree",
-    message: `Mission de prospection lancée : "${niche}" à ${city} — stratégie ${strategy === "swarm" ? "essaim multi-requêtes" : "requête unique précise"}, cible ${maxResults} fiches.`,
+    message: `Mission de prospection lancée : "${niche}" à ${city}${opts.country ? ` (${opts.country})` : ""} — stratégie ${strategy === "swarm" ? "essaim multi-requêtes" : "requête unique précise"}, cible ${maxResults} fiches.`,
   });
   try {
-    const result = await scoutSearch(niche, city, maxResults, strategy);
+    const result = await scoutSearch(niche, city, maxResults, strategy, opts.country);
     if (result.error) {
       await markAgentRunEnd("prospector", false, result.error);
       await logActivity({
@@ -141,7 +141,7 @@ async function aiQualify(p: Prospect): Promise<{ score: number; insight: string;
         "absence de site, capacité à payer. Donne un score de 0 à 100 et un verdict. " +
         'Réponds en JSON : {"score": number, "insight": "une phrase d\'analyse", "verdict": "go"|"no-go"}',
       input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}\nNote: ${p.rating}/5\nAvis: ${p.reviewCount}\nSite web existant: ${p.hasWebsite ? p.websiteUrl : "aucun"}\nTéléphone: ${p.phone ?? "aucun"}\nEmail: ${p.email ?? "aucun"}`,
-      maxTokens: 220,
+      maxTokens: 2000,
       temperature: 0.3,
     }),
   );
@@ -258,7 +258,7 @@ export async function verifyProspectEmail(p: Prospect) {
         "Utilise les conventions réelles des petits commerces (contact@domaine, nomducommerce@gmail.com, etc.). " +
         'Réponds en JSON : {"candidates": ["email1", "email2"]}',
       input: `Nom: ${p.businessName}\nVille: ${p.city}\nPays: ${p.country}\nType: ${p.businessType}\nSite web: ${p.websiteUrl ?? "aucun"}`,
-      maxTokens: 200,
+      maxTokens: 1500,
       temperature: 0.3,
     });
     for (const candidate of coerceStringArray(guess?.candidates).slice(0, 4)) {
@@ -308,21 +308,31 @@ export async function mapProspect(p: Prospect) {
   }
 
   // 🧠 Mapper enrichit la fiche : accroche, description et angle éditorial sur-mesure
+  // — DANS LA LANGUE DU LEAD (site US → anglais), propagée au Coder via clientData.
+  const { localeFor } = await import("./niches");
+  const leadLang: "fr" | "en" = localeFor(p.country ?? "France").lang === "en" ? "en" : "fr";
   const { agentThinkJson } = await import("./agent-brain");
   const { coerceEnrich } = await import("./llm-coerce");
   const enriched = coerceEnrich(
     await agentThinkJson<{ tagline: string; description: string; style: string; angle: string }>({
       agent: "mapper",
       task: "enrichissement_fiche",
+      lang: leadLang,
       instruction:
         "Rédige l'identité éditoriale de ce commerce pour son futur site vitrine. " +
-        "tagline : accroche percutante en français, max 8 mots, spécifique au métier et à la ville, sans point d'exclamation. " +
-        "description : 2 phrases naturelles décrivant l'établissement, ancrées localement, sans superlatif creux. " +
+        (leadLang === "en"
+          ? "tagline: punchy hook in NATIVE US ENGLISH, max 8 words, specific to the trade and the city, no exclamation mark. "
+          : "tagline : accroche percutante en français, max 8 mots, spécifique au métier et à la ville, sans point d'exclamation. ") +
+        (leadLang === "en"
+          ? "description: 2 natural sentences describing the business, locally anchored, no empty superlatives. "
+          : "description : 2 phrases naturelles décrivant l'établissement, ancrées localement, sans superlatif creux. ") +
         "style : un seul mot parmi luxury, bold, warm, minimal, urban. " +
-        "angle : en une phrase, l'argument de vente principal à mettre en avant. " +
+        (leadLang === "en"
+          ? "angle: in one sentence, the main selling point to highlight. "
+          : "angle : en une phrase, l'argument de vente principal à mettre en avant. ") +
         'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string}',
       input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}, ${p.country}\nAdresse: ${p.address}\nNote Google: ${p.rating}/5 avec ${p.reviewCount} avis\nAnalyse du Validator: ${p.aiInsight ?? "—"}`,
-      maxTokens: 400,
+      maxTokens: 2500,
       temperature: 0.7,
     }),
   );
@@ -372,7 +382,7 @@ async function aiSlug(p: Prospect): Promise<string> {
       "reconnaissable par le client (pas de mots génériques). " +
       'Réponds en JSON : {"slug": "mon-commerce-ville"}',
     input: `Nom: ${p.businessName}\nVille: ${p.city}\nType: ${p.businessType}`,
-    maxTokens: 80,
+    maxTokens: 800,
     temperature: 0.3,
   });
   const clean = (out?.slug ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
@@ -549,7 +559,7 @@ export async function createPaymentLink(p: Prospect) {
     task: "message_paiement",
     instruction: "Rédige en 2 phrases le message qui accompagne l'envoi du lien de paiement à ce client. Rappelle la valeur livrée, reste simple et rassurant, sans pression.",
     input: `Commerce: ${p.businessName} (${p.city})\nSite livré: ${p.deployedUrl ?? "—"}\nLien de paiement: ${res.url}`,
-    maxTokens: 200,
+    maxTokens: 1500,
     temperature: 0.6,
   });
   if (pitch) {
@@ -580,7 +590,7 @@ export async function linkProspectDomain(p: Prospect, customDomain?: string) {
         "Propose le nom de domaine le plus crédible pour ce commerce (extension locale adaptée au pays : .ma pour le Maroc, .fr pour la France). " +
         'Réponds en JSON : {"domain": "exemple.ma", "alternatives": ["autre.ma"]}',
       input: `Nom: ${p.businessName}\nVille: ${p.city}\nPays: ${p.country}\nType: ${p.businessType}`,
-      maxTokens: 150,
+      maxTokens: 1200,
       temperature: 0.4,
     });
     if (out?.domain) {

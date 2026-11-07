@@ -37,6 +37,12 @@ export async function POST(req: NextRequest) {
 
   let answer: string;
   let engine: "llm" | "canned" = "canned";
+  // Langue du client : dérivée du pays du lead (US/UK → anglais).
+  let lang: "fr" | "en" = "fr";
+  if (p) {
+    const { resolveLang } = await import("@/lib/emailer");
+    lang = resolveLang(p);
+  }
   if (await llmConfigured()) {
     const ctx = p
       ? `Client: ${p.businessName} (${p.businessType}) à ${p.city}. Étape pipeline: ${p.stage}. Site: ${p.deployedUrl ?? "non déployé"}. Paiement: ${p.paymentStatus}. Notes internes connues: ${p.aiInsight ?? "—"}.`
@@ -46,17 +52,22 @@ export async function POST(req: NextRequest) {
     const raw = await agentThink({
       agent: "support",
       task: "reponse_client",
+      lang,
       instruction:
-        "Réponds au client en 3 à 6 phrases, en français, avec précision et chaleur. " +
-        "Reformule d'abord sa demande en une phrase, puis annonce l'action et le délai. " +
-        "Si une modification du site est demandée, précise qu'elle sera appliquée sous 24h avec un nouveau lien.",
-      input: `${ctx}\n\nMessage du client : "${question}"`,
-      maxTokens: 600,
+        lang === "en"
+          ? "Reply to the client in 3 to 6 sentences, in NATIVE US ENGLISH, with precision and warmth. " +
+            "First restate their request in one sentence, then state the action and the timeline. " +
+            "If a website change is requested, mention it will be applied within 24h with a fresh link."
+          : "Réponds au client en 3 à 6 phrases, en français, avec précision et chaleur. " +
+            "Reformule d'abord sa demande en une phrase, puis annonce l'action et le délai. " +
+            "Si une modification du site est demandée, précise qu'elle sera appliquée sous 24h avec un nouveau lien.",
+      input: `${ctx}\n\n${lang === "en" ? "Client message" : "Message du client"} : "${question}"`,
+      maxTokens: 2500,
       temperature: 0.5,
     });
-    if (raw) { answer = raw.trim(); engine = "llm"; } else { answer = fallbackAnswer(question, p?.businessName); }
+    if (raw) { answer = raw.trim(); engine = "llm"; } else { answer = fallbackAnswer(question, p?.businessName, lang); }
   } else {
-    answer = fallbackAnswer(question, p?.businessName);
+    answer = fallbackAnswer(question, p?.businessName, lang);
   }
 
   await markAgentRunEnd("support", true);
@@ -68,9 +79,20 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, answer, engine });
 }
 
-function fallbackAnswer(question: string, business?: string | null): string {
+function fallbackAnswer(question: string, business: string | null | undefined, lang: "fr" | "en" = "fr"): string {
   const q = question.toLowerCase();
-  const who = business ? `pour ${business} ` : "";
+  const who = business ? (lang === "en" ? `for ${business} ` : `pour ${business} `) : "";
+  if (lang === "en") {
+    if (q.includes("price") || q.includes("cost") || q.includes("pricing"))
+      return `Thanks for your message! About the price ${who}: our done-for-you website offer is all-inclusive (design, launch, and hosting for the first year). I've just re-sent you the secure payment link with the full details. Let me know if you'd like an extra option.`;
+    if (q.includes("change") || q.includes("update") || q.includes("hours") || q.includes("color") || q.includes("photo") || q.includes("modif"))
+      return `Got it! I've passed your change request ${who}to our production team. Updates will be applied within 24h and you'll receive the refreshed link to review. Anything else to adjust at the same time?`;
+    if (q.includes("domain") || q.includes("url") || q.includes("address"))
+      return `Great question. Your site is currently available on its preview address. As soon as payment is confirmed, we connect your custom domain (e.g. www.your-company.com) within 48h, SSL certificate included.`;
+    if (q.includes("when") || q.includes("deadline") || q.includes("delivery") || q.includes("long"))
+      return `Your website is already ready and visible on the preview link! After validation, going live takes 24 to 48 hours. You'll receive a confirmation email with all your access details.`;
+    return `Thanks for your message${business ? ` about ${business}` : ""}! I'm forwarding your request to the team and will get back to you very shortly with a precise answer. In the meantime, your preview link stays available. Have a great day!`;
+  }
   if (q.includes("prix") || q.includes("tarif") || q.includes("coût"))
     return `Merci pour votre message ! Concernant le tarif ${who}: notre offre site vitrine clé en main est tout compris (création, mise en ligne, hébergement la première année). Je viens de vous renvoyer le lien de paiement sécurisé avec le détail précis. N'hésitez pas si vous souhaitez une option supplémentaire.`;
   if (q.includes("modif") || q.includes("change") || q.includes("horaire") || q.includes("couleur") || q.includes("photo"))

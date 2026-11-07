@@ -10,7 +10,8 @@
 import { db } from "@/db";
 import { serperKeys, type SerperKey } from "@/db/schema";
 import { and, asc, eq, lt } from "drizzle-orm";
-import { simulatePlaces, isMoroccanCity, type RawPlace } from "./simulate";
+import { simulatePlaces, type RawPlace } from "./simulate";
+import { resolveMissionGeo } from "./geo";
 import { logActivity } from "./activity";
 import { notifyTelegram } from "./telegram";
 import { allowSimulation } from "./settings";
@@ -112,7 +113,7 @@ function heuristicQueries(niche: string, city: string, wanted: number, isMA: boo
 }
 
 /** 🧠 L'IA affine et complète le plan de requêtes pour cette mission. */
-async function planQueries(niche: string, city: string, wanted: number, isMA: boolean): Promise<{ queries: string[]; reasoning: string }> {
+async function planQueries(niche: string, city: string, wanted: number, isMA: boolean, localeLabel = "français"): Promise<{ queries: string[]; reasoning: string }> {
   const heuristics = heuristicQueries(niche, city, wanted, isMA);
   const { agentThinkJson } = await import("./agent-brain");
   const out = await agentThinkJson<{ queries: string[]; reasoning: string }>({
@@ -121,7 +122,7 @@ async function planQueries(niche: string, city: string, wanted: number, isMA: bo
     instruction:
       `Tu dois préparer un essaim de ${wanted} requêtes Google Places COMPLÉMENTAIRES (donc différentes) pour trouver le maximum de petits ` +
       `commerces de cette niche dans cette ville, en privilégiant ceux qui n'ont probablement PAS de site web. ` +
-      `Varie : synonymes métier en langue locale (${isMA ? "français marocain" : "français"}), quartiers/axes de la ville, expressions que tapent les habitants. ` +
+      `Varie : synonymes métier en langue locale (${localeLabel}), quartiers/axes de la ville, expressions que tapent les habitants. ` +
       `Aucune requête ne doit être trop proche d'une autre. ` +
       `Réponds en JSON : {"queries": string[] (${wanted} maximum, 2 minimum), "reasoning": "une phrase"}`,
     input: `Niche: ${niche}\nVille: ${city}\nRéférences heuristiques à raffiner (tu peux en garder les meilleures et en ajouter de nouvelles) :\n${heuristics.join("\n")}`,
@@ -219,12 +220,12 @@ type CallOutcome =
   | { ok: true; places: Record<string, unknown>[] }
   | { ok: false; kind: "quota" | "network"; detail: string };
 
-async function serperPlacesCall(query: string, gl: string, key: SerperKey): Promise<CallOutcome> {
+async function serperPlacesCall(query: string, gl: string, hl: string, key: SerperKey): Promise<CallOutcome> {
   try {
     const res = await fetch("https://google.serper.dev/places", {
       method: "POST",
       headers: { "X-API-KEY": key.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ q: query, gl, hl: "fr", num: 20 }),
+      body: JSON.stringify({ q: query, gl, hl, num: 20 }),
       signal: AbortSignal.timeout(25000),
     });
     if (res.status === 401 || res.status === 402 || res.status === 403 || res.status === 429) {
@@ -245,11 +246,13 @@ export async function scoutSearch(
   city: string,
   maxResults = 12,
   strategy: ScoutStrategy = "swarm",
+  countryOverride?: string,
 ): Promise<ScoutResult> {
   const sim = await allowSimulation();
-  const isMA = isMoroccanCity(city);
-  const country = isMA ? "Maroc" : "France";
-  const gl = isMA ? "ma" : "fr";
+  const geo = resolveMissionGeo(city, countryOverride);
+  const isMA = geo.country === "Maroc";
+  const country = geo.country;
+  const gl = geo.gl;
 
   // ── Mode test (simulation) ──
   if (sim) {
@@ -273,7 +276,7 @@ export async function scoutSearch(
   // 🧠 Plan de requêtes (IA) — 1 en mode précise, 3 à 5 en essaim
   const wanted = strategy === "swarm" ? Math.min(5, Math.max(3, Math.ceil(maxResults / 8))) : 1;
   const plan = strategy === "swarm"
-    ? await planQueries(niche, city, wanted, isMA)
+    ? await planQueries(niche, city, wanted, isMA, geo.hl === "en" ? "en anglais américain" : isMA ? "français marocain" : "français")
     : { queries: [`${niche} ${city}`], reasoning: "" };
 
   if (plan.reasoning) {
@@ -292,7 +295,7 @@ export async function scoutSearch(
   let rotated = false;
 
   for (const query of plan.queries) {
-    const call = await serperPlacesCall(query, gl, key);
+    const call = await serperPlacesCall(query, gl, geo.hl, key);
 
     if (!call.ok) {
       if (call.kind === "quota") {
