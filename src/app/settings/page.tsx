@@ -6,7 +6,7 @@ import {
   Save, Loader2, Bot, BrainCircuit, MailPlus, Triangle, CreditCard, Store,
   KeyRound, Eye, EyeOff, Shield, Zap, FlaskConical, RefreshCw, Inbox,
 } from "lucide-react";
-import { Toast } from "@/components/ui";
+import { Toast, apiJson } from "@/components/ui";
 import { SetupWizard } from "@/components/setup-wizard";
 
 type Group = {
@@ -93,8 +93,8 @@ export default function SettingsPage() {
 
   const loadSettings = useCallback(async () => {
     const r = await fetch("/api/settings", { cache: "no-store" });
-    const j = await r.json();
-    setValues(j.settings ?? {});
+    const j = await apiJson<{ settings?: Record<string, string> }>(r);
+    if (j) setValues(j.settings ?? {});
     setLoaded(true);
   }, []);
 
@@ -104,7 +104,8 @@ export default function SettingsPage() {
     setSaving(label);
     try {
       const r = await fetch("/api/settings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const j = await r.json();
+      const j = await apiJson<{ updated?: string[] }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — modifications non enregistrées.", kind: "err" }); return; }
       setToast({ msg: j.updated?.length ? `${label} enregistré.` : "Aucun changement à enregistrer.", kind: "ok" });
       await loadSettings();
       setWizardKey((k) => k + 1);

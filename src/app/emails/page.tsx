@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Inbox, RefreshCw, Loader2, X, AlertTriangle } from "lucide-react";
-import { useApi } from "@/components/ui";
+import { useApi, apiJson } from "@/components/ui";
 
 type EmailRow = {
   id: number;
@@ -44,9 +44,9 @@ export default function EmailsPage() {
     setOpeningId(id);
     try {
       const r = await fetch(`/api/emails/${id}`);
-      const j = (await r.json()) as { email?: EmailDetail; error?: string };
-      if (j.email) setOpen(j.email);
-      else setToast({ msg: j.error ?? "Email introuvable.", kind: "err" });
+      const j = await apiJson<{ email?: EmailDetail; error?: string }>(r);
+      if (j?.email) setOpen(j.email);
+      else setToast({ msg: j?.error ?? "Email introuvable.", kind: "err" });
     } finally {
       setOpeningId(null);
     }
@@ -56,7 +56,8 @@ export default function EmailsPage() {
     setBackfilling(true);
     try {
       const r = await fetch("/api/emails/backfill", { method: "POST" });
-      const j = (await r.json()) as { fetched?: number; archived?: number; skipped?: number; missing?: number; error?: string };
+      const j = await apiJson<{ fetched?: number; archived?: number; skipped?: number; missing?: number; error?: string }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
       if (j.error) setToast({ msg: `${j.error} — récupérés: ${j.archived ?? 0}, ignorés: ${j.skipped ?? 0}, introuvables: ${j.missing ?? 0}.`, kind: "err" });
       else setToast({ msg: `Rétro-complétion : ${j.archived ?? 0} archivé(s), ${j.skipped ?? 0} sans contenu, ${j.missing ?? 0} introuvable(s).`, kind: "ok" });
       await reload();

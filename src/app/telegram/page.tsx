@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Send, Copy, Check, Loader2, Bot, Terminal, Webhook, ShieldCheck, RefreshCw, AlertTriangle } from "lucide-react";
-import { useApi, Toast } from "@/components/ui";
+import { useApi, Toast, apiJson } from "@/components/ui";
 import type { StatsPayload, ActivityRow } from "@/app/page";
 
 const COMMANDS = [
@@ -37,18 +37,19 @@ export default function TelegramPage() {
   const loadDiag = useCallback(async () => {
     try {
       const r = await fetch("/api/telegram/register");
-      const j = (await r.json()) as WebhookState;
+      const j = await apiJson<WebhookState>(r);
+      if (!j) return;
       setHook(j);
       // Auto-réparation : si le bot est configuré mais le webhook manquant/incorrect → enregistrement automatique
       if (j.ok && !j.urlMatches) {
         setRegistering(true);
         const r2 = await fetch("/api/telegram/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        const j2 = await r2.json();
+        const j2 = await apiJson<{ ok?: boolean; url?: string }>(r2);
         setRegistering(false);
-        if (j2.ok) {
+        if (j2?.ok) {
           setToast({ msg: `Webhook enregistré automatiquement → ${j2.url}`, kind: "ok" });
           const r3 = await fetch("/api/telegram/register");
-          setHook(await r3.json());
+          setHook(await apiJson<WebhookState>(r3));
         }
       }
     } catch { /* noop */ }
@@ -69,8 +70,8 @@ export default function TelegramPage() {
     setRegistering(true);
     try {
       const r = await fetch("/api/telegram/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const j = await r.json();
-      setToast({ msg: j.ok ? `Webhook enregistré : ${j.url}` : j.error ?? "Échec d'enregistrement", kind: j.ok ? "ok" : "err" });
+      const j = await apiJson<{ ok?: boolean; url?: string; error?: string }>(r);
+      setToast({ msg: j?.ok ? `Webhook enregistré : ${j.url}` : j?.error ?? "Échec d'enregistrement", kind: j?.ok ? "ok" : "err" });
       await loadDiag();
     } finally {
       setRegistering(false);
@@ -84,9 +85,9 @@ export default function TelegramPage() {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: testMsg || undefined }),
       });
-      const j = await r.json();
-      setToast({ msg: j.ok ? "Message reçu sur Telegram." : j.error ?? "Envoi échoué", kind: j.ok ? "ok" : "err" });
-      if (j.ok) setTestMsg("");
+      const j = await apiJson<{ ok?: boolean; error?: string }>(r);
+      setToast({ msg: j?.ok ? "Message reçu sur Telegram." : j?.error ?? "Envoi échoué", kind: j?.ok ? "ok" : "err" });
+      if (j?.ok) setTestMsg("");
     } finally {
       setSending(false);
     }

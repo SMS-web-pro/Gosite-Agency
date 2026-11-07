@@ -4,7 +4,7 @@ import { Suspense, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2, StepForward, Zap, Trash2, ExternalLink, ChevronRight, Ban, Search, Download, Eraser, MessagesSquare } from "lucide-react";
-import { useApi, Toast, Stars, STAGE_LABELS, STAGE_COLORS, stageChipStyle } from "@/components/ui";
+import { useApi, Toast, Stars, STAGE_LABELS, STAGE_COLORS, stageChipStyle, apiJson } from "@/components/ui";
 import type { StatsPayload, ProspectRow } from "@/app/page";
 
 const BOARD_COLS = [
@@ -60,7 +60,8 @@ function Board() {
       const r = await fetch(`/api/prospects/${id}/advance`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
-      const j = await r.json();
+      const j = await apiJson<{ ok?: boolean; reason?: string; error?: string }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
       if (j.ok) setToast({ msg: `${label} — succès pour le lead #${id}.`, kind: "ok" });
       else setToast({ msg: j.reason ?? j.error ?? `Étape "${label}" terminée avec avertissement.`, kind: j.reason ? "err" : "err" });
       await reload();

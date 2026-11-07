@@ -8,7 +8,7 @@ import {
   CreditCard, Send as SendIcon, KeyRound, AlertTriangle, CheckCircle2, Clock, Plus, Trash2, CalendarClock,
   MessagesSquare,
 } from "lucide-react";
-import { useApi, CountUp, Toast, AGENT_ICONS, STAGE_LABELS, stageChipStyle } from "@/components/ui";
+import { useApi, CountUp, Toast, AGENT_ICONS, STAGE_LABELS, stageChipStyle, apiJson } from "@/components/ui";
 
 /* ── Shared types ── */
 export type AgentRow = {
@@ -100,7 +100,8 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ niche, city, strategy, autoValidate: true, telegram: true }),
       });
-      const j = await r.json();
+      const j = await apiJson<{ ok?: boolean; inserted?: number; duplicates?: number; creditsSpent?: number; rotated?: boolean; validation?: { validated: number; rejected: number }; error?: string }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
       if (j.ok) {
         setLastMission(j);
         setToast({
@@ -118,7 +119,8 @@ export default function Dashboard() {
     setTicking(true);
     try {
       const r = await fetch("/api/autopilot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "tick" }) });
-      const j = await r.json();
+      const j = await apiJson<{ advanced?: Record<string, number>; missionsRun?: number; errors?: string[] }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
       const moved = Object.values(j.advanced ?? {}).reduce((a: number, b) => a + (b as number), 0);
       setToast({ msg: `Cycle terminé : ${j.missionsRun} mission(s), ${moved} lead(s) avancé(s)${j.errors?.length ? `, ${j.errors.length} erreur(s)` : ""}.`, kind: j.errors?.length && !moved ? "err" : "ok" });
       await reload();
@@ -140,8 +142,9 @@ export default function Dashboard() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ niche: schedNiche, city: schedCity, intervalHours: schedEvery }),
     });
-    const j = await r.json();
-    setToast({ msg: j.ok ? `Mission planifiée : ${schedNiche} / ${schedCity} toutes les ${schedEvery}h.` : j.error ?? "Erreur", kind: j.ok ? "ok" : "err" });
+    const j = await apiJson<{ ok?: boolean; error?: string }>(r);
+    if (!j || !j.ok) { setToast({ msg: j?.error ?? "Planification impossible — réessaie.", kind: "err" }); return; }
+    setToast({ msg: `Mission planifiée : ${schedNiche} / ${schedCity} toutes les ${schedEvery}h.`, kind: "ok" });
     await reload();
   };
 

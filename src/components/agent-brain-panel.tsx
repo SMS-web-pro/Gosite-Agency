@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Brain, Dna, GraduationCap, Cog, Loader2, Plus, X, Sparkles, Activity } from "lucide-react";
+import { apiJson } from "@/components/ui";
 
 type Skill = { id: number; title: string; instruction: string; source: string; active: boolean; useCount: number };
 type Learning = { id: number; insight: string; kind: string; createdAt: string };
@@ -31,10 +32,12 @@ export function AgentBrainPanel({ agentKey, agentName, color, brainOnline, onToa
     setLoading(true);
     try {
       const r = await fetch(`/api/agents/${agentKey}/skills`, { cache: "no-store" });
-      const j = await r.json();
-      setSkills(j.skills ?? []);
-      setLearnings(j.learnings ?? []);
-      setAi(j.ai ?? null);
+      const j = await apiJson<{ skills?: Skill[]; learnings?: Learning[]; ai?: AiStats | null }>(r);
+      if (j) {
+        setSkills(j.skills ?? []);
+        setLearnings(j.learnings ?? []);
+        setAi(j.ai ?? null);
+      }
     } finally { setLoading(false); }
   }, [agentKey]);
 
@@ -68,8 +71,8 @@ export function AgentBrainPanel({ agentKey, agentName, color, brainOnline, onToa
     setEvolving(true);
     try {
       const r = await fetch(`/api/agents/${agentKey}/evolve`, { method: "POST" });
-      const j = await r.json();
-      onToast(j.ok ? `${agentName} a évolué — ${j.summary}` : j.summary, j.ok ? "ok" : "err");
+      const j = await apiJson<{ ok?: boolean; summary?: string }>(r);
+      onToast(j?.ok ? `${agentName} a évolué — ${j.summary}` : j?.summary ?? "Serveur momentanément indisponible.", j?.ok ? "ok" : "err");
       load();
     } finally { setEvolving(false); }
   };

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { apiJson } from "@/components/ui";
 import {
   CheckCircle2, AlertTriangle, XCircle, RefreshCw, Loader2, Wand2, Copy, Check,
 } from "lucide-react";
@@ -27,7 +28,8 @@ export function SetupWizard({ onChanged }: { onChanged?: () => void }) {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/diagnostics", { cache: "no-store" });
-      setDiag(await r.json());
+      const j = await apiJson<Diag>(r);
+      if (j) setDiag(j);
     } finally { setLoading(false); }
   }, []);
 

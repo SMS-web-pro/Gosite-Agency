@@ -7,7 +7,7 @@ import {
   MapPin, Phone, Mail, Clock, Star, Globe, Rocket, Send, CreditCard, LifeBuoy,
   BadgeCheck, MailCheck, ClipboardList, Code2, CircleDollarSign, StickyNote,
 } from "lucide-react";
-import { useApi, Toast, Stars, STAGE_LABELS, STAGE_COLORS, stageChipStyle } from "@/components/ui";
+import { useApi, Toast, Stars, STAGE_LABELS, STAGE_COLORS, stageChipStyle, apiJson } from "@/components/ui";
 
 type EmailArchiveRow = {
   id: number; prospectId: number | null; toEmail: string; subject: string | null;
@@ -64,15 +64,16 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
     if (openMail?.id === mailId) { setOpenMail(null); return; }
     setOpenMail({ id: mailId, bodyHtml: null, subject: null });
     const r = await fetch(`/api/emails/${mailId}`);
-    const j = (await r.json()) as { email?: { bodyHtml: string | null; subject: string | null }; error?: string };
-    if (j.email) setOpenMail({ id: mailId, bodyHtml: j.email.bodyHtml, subject: j.email.subject });
+    const j = await apiJson<{ email?: { bodyHtml: string | null; subject: string | null }; error?: string }>(r);
+    if (j?.email) setOpenMail({ id: mailId, bodyHtml: j.email.bodyHtml, subject: j.email.subject });
   };
 
   const backfillMails = async () => {
     setBusy("backfill");
     try {
       const r = await fetch("/api/emails/backfill", { method: "POST" });
-      const j = (await r.json()) as { archived?: number; skipped?: number; missing?: number; error?: string };
+      const j = await apiJson<{ archived?: number; skipped?: number; missing?: number; error?: string }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
       if (j.error) setToast({ msg: `${j.error}`, kind: "err" });
       else setToast({ msg: `Récupération Brevo : ${j.archived ?? 0} archivé(s), ${j.missing ?? 0} introuvable(s).`, kind: "ok" });
       await mails.reload();
@@ -84,8 +85,8 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
 
   const loadNotes = async () => {
     const r = await fetch(`/api/prospects/${id}/notes`);
-    const j = await r.json();
-    setNotes(j.notes ?? []);
+    const j = await apiJson<{ notes?: { id: number; author: string; body: string; createdAt: string }[] }>(r);
+    if (j?.notes) setNotes(j.notes);
   };
   useEffect(() => { loadNotes(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
@@ -109,7 +110,8 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
       const r = await fetch(`/api/prospects/${id}/advance`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
-      const j = await r.json();
+      const j = await apiJson<{ ok?: boolean; url?: string; engine?: string; reason?: string; error?: string }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
       if (j.ok) setToast({ msg: `${label} : succès.${j.url ? ` → ${j.url}` : ""}${j.engine ? ` (moteur ${j.engine === "llm" ? "LLM omniroute" : "gabarit interne"})` : ""}`, kind: "ok" });
       else setToast({ msg: j.reason ?? j.error ?? `${label} : avertissement.`, kind: "err" });
       await reload();
@@ -132,8 +134,9 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prospectId: Number(id), question }),
       });
-      const j = await r.json();
-      if (j.ok) { setAnswer(j.answer); setQuestion(""); setToast({ msg: `Support a répondu (${j.engine === "llm" ? "LLM" : "script réflexe"}).`, kind: "ok" }); }
+      const j = await apiJson<{ ok?: boolean; answer?: string; engine?: string }>(r);
+      if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
+      if (j.ok && j.answer) { setAnswer(j.answer); setQuestion(""); setToast({ msg: `Support a répondu (${j.engine === "llm" ? "LLM" : "script réflexe"}).`, kind: "ok" }); }
     } finally {
       setBusy(null);
     }

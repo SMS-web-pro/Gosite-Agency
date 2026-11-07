@@ -6,7 +6,7 @@ import {
   Send, Loader2, Crown, Trash2, Wrench, Sparkles, Target, Plus, X,
   BrainCircuit, AlertTriangle, CheckCircle2,
 } from "lucide-react";
-import { Toast, useApi } from "@/components/ui";
+import { Toast, useApi, apiJson } from "@/components/ui";
 import { markdownToHtml } from "@/lib/format";
 
 type Msg = {
@@ -46,13 +46,13 @@ export default function RioChatPage() {
 
   const loadHistory = async () => {
     const r = await fetch("/api/rio/chat");
-    const j = await r.json();
-    setMessages((j.messages ?? []).filter((m: Msg) => m.role !== "tool"));
+    const j = await apiJson<{ messages?: Msg[] }>(r);
+    if (j) setMessages((j.messages ?? []).filter((m: Msg) => m.role !== "tool"));
   };
   const loadObjectives = async () => {
     const r = await fetch("/api/objectives");
-    const j = await r.json();
-    setObjectives((j.objectives ?? []).filter((o: ObjectiveRow) => o.status === "active"));
+    const j = await apiJson<{ objectives?: ObjectiveRow[] }>(r);
+    if (j) setObjectives((j.objectives ?? []).filter((o: ObjectiveRow) => o.status === "active"));
   };
 
   useEffect(() => { loadHistory(); loadObjectives(); }, []);
@@ -68,7 +68,11 @@ export default function RioChatPage() {
       const r = await fetch("/api/rio/chat", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }),
       });
-      const j = await r.json();
+      const j = await apiJson<{ reply?: string; engine?: string; toolCalls?: { name: string; args: Record<string, unknown>; result?: string }[] }>(r);
+      if (!j) {
+        setMessages((m) => [...m, { id: `e-${Date.now()}`, role: "assistant", content: "Connexion interrompue. Réessaie." }]);
+        return;
+      }
       setMessages((m) => [...m, {
         id: `a-${Date.now()}`, role: "assistant", content: j.reply ?? "…",
         toolCalls: j.toolCalls ?? [],

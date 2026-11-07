@@ -30,6 +30,24 @@ export function stageChipStyle(stage: string) {
 }
 
 // Poll an API endpoint
+// Parse JSON robuste : une réponse non-JSON (page d'erreur Vercel « An error
+// occurred… », 502, HTML) ne doit jamais casser la page ni lever d'exception
+// non gérée. Retourne null en cas de réponse illisible.
+export async function apiJson<T = unknown>(r: Response): Promise<T | null> {
+  try {
+    const ct = r.headers.get("content-type") ?? "";
+    if (!r.ok || !ct.includes("json")) {
+      const t = await r.text().catch(() => "");
+      console.warn(`[api] ${r.status} ${ct || "sans type"} — ${t.slice(0, 120)}`);
+      return null;
+    }
+    return (await r.json()) as T;
+  } catch (e) {
+    console.warn("[api] réponse illisible", e);
+    return null;
+  }
+}
+
 export function useApi<T>(url: string, intervalMs = 0): { data: T | null; reload: () => Promise<void>; loading: boolean } {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -37,9 +55,8 @@ export function useApi<T>(url: string, intervalMs = 0): { data: T | null; reload
   const load = async () => {
     try {
       const r = await fetch(url, { cache: "no-store" });
-      if (!r.ok) return;
-      const j = (await r.json()) as T;
-      if (alive.current !== false) setData(j);
+      const j = await apiJson<T>(r);
+      if (j !== null && alive.current !== false) setData(j);
     } catch { /* noop */ } finally {
       setLoading(false);
     }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Pause, Play, RefreshCw, KeyRound, Loader2, Brain, Dna, BrainCircuit } from "lucide-react";
 import Link from "next/link";
-import { useApi, Toast, AGENT_ICONS } from "@/components/ui";
+import { useApi, Toast, AGENT_ICONS, apiJson } from "@/components/ui";
 import { AgentBrainPanel } from "@/components/agent-brain-panel";
 import type { StatsPayload } from "@/app/page";
 
@@ -39,8 +39,8 @@ export default function AgentsPage() {
       let grown = 0;
       for (const key of roster) {
         const r = await fetch(`/api/agents/${key}/evolve`, { method: "POST" });
-        const j = await r.json();
-        if (j.ok && (j.skills?.length || j.learnings?.length)) grown++;
+        const j = await apiJson<{ ok?: boolean; skills?: unknown[]; learnings?: unknown[] }>(r);
+        if (j && j.ok && (j.skills?.length || j.learnings?.length)) grown++;
       }
       setToast({ msg: `Auto-amélioration terminée : ${grown} agent(s) ont progressé.`, kind: "ok" });
       await reload();
@@ -53,8 +53,9 @@ export default function AgentsPage() {
       const r = await fetch(`/api/agents/${key}`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
-      const j = await r.json();
-      if (j.ok) setToast({ msg: `Agent ${key} : action "${action}" appliquée.`, kind: "ok" });
+      const j = await apiJson<{ ok?: boolean }>(r);
+      if (j?.ok) setToast({ msg: `Agent ${key} : action "${action}" appliquée.`, kind: "ok" });
+      else setToast({ msg: `Action "${action}" n'a pas abouti (serveur indisponible ?).`, kind: "err" });
       await reload();
     } finally {
       setBusy(null);
@@ -68,9 +69,9 @@ export default function AgentsPage() {
       const r = await fetch("/api/serper-keys", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ apiKey: newKey.trim() }),
       });
-      const j = await r.json();
-      if (j.ok) { setNewKey(""); setToast({ msg: "Clé Serper ajoutée — Prospector passe en mode LIVE.", kind: "ok" }); }
-      else setToast({ msg: j.error ?? "Erreur", kind: "err" });
+      const j = await apiJson<{ ok?: boolean; error?: string }>(r);
+      if (j?.ok) { setNewKey(""); setToast({ msg: "Clé Serper ajoutée — Prospector passe en mode LIVE.", kind: "ok" }); }
+      else setToast({ msg: j?.error ?? "Clé non enregistrée (serveur indisponible ?)", kind: "err" });
       await reload();
     } finally {
       setAddingKey(false);
