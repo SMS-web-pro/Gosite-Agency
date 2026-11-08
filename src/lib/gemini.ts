@@ -142,6 +142,16 @@ export async function testGeminiKeys(): Promise<{ label: string; ok: boolean; in
   const keys = await geminiKeys();
   const model = await geminiModel();
   return Promise.all(keys.map(async (key, i) => {
+    // Une clé AI Studio commence TOUJOURS par « AIza » (~39 car). Les jetons
+    // « AQ.AB… »/« ya29. » sont des credentials temporaux, qui ne marchent pas
+    // ici : on évite 120s d'attente et on indique où créer la bonne clé.
+    if (!key.startsWith("AIza")) {
+      return {
+        label: `Compte ${i + 1}`,
+        ok: false,
+        info: `ce n'est pas une clé AI Studio (début « ${key.slice(0, 4)}… ») — il faut une clé commençant par « AIza », créée sur aistudio.google.com/apikey`,
+      };
+    }
     const r = await callModel(key, model, "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
       maxOutputTokens: 64,
       temperature: 0,
