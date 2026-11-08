@@ -4,8 +4,8 @@
 //    interrupteurs auto_pilot / pause de chaque agent.
 
 import { db } from "@/db";
-import { agents, inboundEmails, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
-import { and, asc, eq, lt } from "drizzle-orm";
+import { agents, activities, inboundEmails, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
+import { and, asc, desc, eq, lt } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ensureAgentsSeeded } from "./agents";
 import { getSetting } from "./settings";
@@ -24,10 +24,15 @@ export type TickSummary = {
   errors: string[];
   evolved?: { agent: string; summary: string; skills: string[] };
   skipped?: string;
+  deadlineReached?: boolean;
 };
 
 const TICK_LOCK_KEY = "TICK_LOCK";
 const TICK_LOCK_STALE_MS = 10 * 60_000; // un tick planté libère le verrou après 10 min
+// Avec un ping externe toutes les 10 min, chaque cycle doit rester borné bien
+// sous le maxDuration de la fonction (300 s) : on s'arrête à 240 s, le tick
+// suivant reprendra le lot là où il était (avancement sauvegardé lead par lead).
+const TICK_DEADLINE_MS = 240_000;
 
 // Verrou de tick : un seul cycle à la fois (cron + RIO + manuel ne doivent
 // jamais traiter le même batch en parallèle). Claim atomique avec expiration
@@ -91,6 +96,7 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
 async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   const cache = new Map<string, Agent>();
   const bump = (k: string) => { summary.advanced[k] = (summary.advanced[k] ?? 0) + 1; };
+  const deadline = Date.now() + TICK_DEADLINE_MS;
 
   // Auto-réparation : un lead resté en "contacting" (crash en pleine tentative
   // d'envoi) retourne en "deployed" après 15 min d'inactivité.
@@ -102,6 +108,7 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   if (await agentUsable("prospector", cache)) {
     const schedules = await db.select().from(scoutSchedules).where(eq(scoutSchedules.active, true)).orderBy(asc(scoutSchedules.lastRunAt));
     for (const s of schedules.slice(0, 2)) {
+      if (Date.now() > deadline) { summary.deadlineReached = true; break; }
       const due = !s.lastRunAt || Date.now() - new Date(s.lastRunAt).getTime() >= s.intervalHours * 3600_000;
       if (!due) continue;
       try {
@@ -134,9 +141,11 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   ];
 
   for (const step of steps) {
+    if (Date.now() > deadline) { summary.deadlineReached = true; break; }
     if (!(await agentUsable(step.agent, cache))) continue;
     const batch = await take(step.stage, step.limit);
     for (const p of batch) {
+      if (Date.now() > deadline) { summary.deadlineReached = true; break; }
       try {
         await step.fn(p);
         // Succès : remet le compteur d'échecs à zéro (uniquement si utile).
@@ -223,17 +232,29 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     summary.errors.push(`reconciliation: ${err instanceof Error ? err.message : "?"}`);
   }
 
-  // ── 4) Auto-amélioration : un agent évolue à chaque cycle (rotation) ──
-  try {
-    const { brainOnline, evolveAgent } = await import("./agent-brain");
-    if (await brainOnline()) {
-      const roster = ["prospector", "validator", "emailor", "mapper", "coder", "deployer", "saler", "paymer", "domainner", "support"];
-      const pick = roster[new Date().getHours() % roster.length];
-      const evo = await evolveAgent(pick);
-      if (evo.ok) summary.evolved = { agent: pick, summary: evo.summary, skills: evo.skills };
+  // ── 4) Auto-amélioration : au maximum une évolution par agent toutes les
+  //      6 heures (sinon un ping toutes les 10 min paierait un appel LLM
+  //      d'analyse de journal à chaque cycle pour le même résultat).
+  if (Date.now() <= deadline) {
+    try {
+      const { brainOnline, evolveAgent } = await import("./agent-brain");
+      if (await brainOnline()) {
+        const roster = ["prospector", "validator", "emailor", "mapper", "coder", "deployer", "saler", "paymer", "domainner", "support"];
+        const pick = roster[new Date().getHours() % roster.length];
+        const lastEvo = await db
+          .select({ createdAt: activities.createdAt })
+          .from(activities)
+          .where(and(eq(activities.agentKey, pick), eq(activities.action, "auto_evolution")))
+          .orderBy(desc(activities.createdAt))
+          .limit(1);        const cooled = !lastEvo[0] || Date.now() - new Date(lastEvo[0].createdAt).getTime() >= 6 * 3600_000;
+        if (cooled) {
+          const evo = await evolveAgent(pick);
+          if (evo.ok) summary.evolved = { agent: pick, summary: evo.summary, skills: evo.skills };
+        }
+      }
+    } catch (err) {
+      summary.errors.push(`evolution: ${err instanceof Error ? err.message : "?"}`);
     }
-  } catch (err) {
-    summary.errors.push(`evolution: ${err instanceof Error ? err.message : "?"}`);
   }
 
   const moved = Object.values(summary.advanced).reduce((a, b) => a + b, 0);
