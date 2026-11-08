@@ -29,7 +29,9 @@ const GROUPS: Group[] = [
     desc: "Le moteur du Coder pour générer les sites : 1 clé = 1 compte Google AI Studio = 20 sites gratuits/jour. Rotation automatique entre comptes, repli LLM omniroute puis gabarit si tout est épuisé.",
     tester: { url: "/api/settings/gemini", button: "Tester les clés" },
     multiKey: { setting: "GEMINI_API_KEYS", count: 3 },
-    fields: [],
+    fields: [
+      { key: "GEMINI_MODEL", label: "Modèle", placeholder: "gemini-3.8-flash", hint: "gemini-3.5-flash-lite = 25× plus de quotas/jour et files plus courtes, rendu un cran moins fin" },
+    ],
   },
   {
     title: "LLM — omniroute", icon: BrainCircuit, color: "#a78bfa",

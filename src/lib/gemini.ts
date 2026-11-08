@@ -6,7 +6,7 @@
 import { getSetting } from "./settings";
 import { nextPacificMidnight, parseKeys, pickKeyOrder, type QuarantineMap } from "./gemini-keys";
 
-const MODEL = "gemini-3.8-flash";
+const DEFAULT_MODEL = "gemini-3.8-flash";
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 const CALL_TIMEOUT_MS = 150_000;
 const QUARANTINE_SOFT_MS = 60_000;      // 5xx / réseau : îlot court
@@ -28,6 +28,7 @@ type Miss = { status: null | number; body: string };
 
 async function callModel(
   key: string,
+  model: string,
   system: string,
   user: string,
   opts: { maxOutputTokens: number; temperature: number; timeoutMs: number; bare?: boolean },
@@ -38,7 +39,7 @@ async function callModel(
   };
   if (!opts.bare) gen.thinkingConfig = { thinkingLevel: "low" };
   const fire = (): Promise<Response> =>
-    fetch(`${BASE}/models/${MODEL}:generateContent`, {
+    fetch(`${BASE}/models/${model}:generateContent`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
       body: JSON.stringify({
@@ -92,6 +93,10 @@ async function callModel(
   }
 }
 
+export async function geminiModel(): Promise<string> {
+  return (await getSetting("GEMINI_MODEL")).trim() || DEFAULT_MODEL;
+}
+
 export async function geminiCompleteStep(params: {
   system: string;
   user: string;
@@ -101,9 +106,10 @@ export async function geminiCompleteStep(params: {
 }): Promise<string | null> {
   const keys = await geminiKeys();
   if (keys.length === 0) return null;
+  const model = await geminiModel();
 
   for (const key of pickKeyOrder(keys, quarantine, Date.now(), (cursor++) % keys.length)) {
-    const r = await callModel(key, params.system, params.user, {
+    const r = await callModel(key, model, params.system, params.user, {
       maxOutputTokens: params.maxTokens ?? 16384,
       temperature: params.temperature ?? 0.6,
       timeoutMs: params.timeoutMs ?? CALL_TIMEOUT_MS,
@@ -134,14 +140,15 @@ export async function geminiCompleteStep(params: {
  * NE modifie pas la quarantine. */
 export async function testGeminiKeys(): Promise<{ label: string; ok: boolean; info: string }[]> {
   const keys = await geminiKeys();
+  const model = await geminiModel();
   return Promise.all(keys.map(async (key, i) => {
-    const r = await callModel(key, "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
+    const r = await callModel(key, model, "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
       maxOutputTokens: 64,
       temperature: 0,
-      timeoutMs: 45_000,
+      timeoutMs: 120_000,
     });
     return {
-      label: `Compte ${i + 1}`,
+      label: `Compte ${i + 1} (${model})`,
       ok: "text" in r,
       info: "text" in r
         ? `quota libre — réponse « ${r.text.slice(0, 20)} »`

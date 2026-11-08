@@ -4,7 +4,7 @@ import { testGeminiKeys } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 // GET /api/settings/gemini — micro-appel (64 tokens) par clé configurée :
 // dit précisément quel compte Gemini répond et quel compte est piégé.
