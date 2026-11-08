@@ -37,53 +37,59 @@ async function callModel(
     maxOutputTokens: opts.maxOutputTokens,
   };
   if (!opts.bare) gen.thinkingConfig = { thinkingLevel: "low" };
-  const doit = async (): Promise<Response | null> => {
-    try {
-      return await fetch(`${BASE}/models/${MODEL}:generateContent`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: user }] }],
-          systemInstruction: { parts: [{ text: system }] },
-          generationConfig: gen,
-        }),
-        signal: AbortSignal.timeout(opts.timeoutMs),
-      });
-    } catch (err) {
-      console.error("[gemini] réseau:", err instanceof Error ? err.message : err);
-      return null;
-    }
+  const fire = (): Promise<Response> =>
+    fetch(`${BASE}/models/${MODEL}:generateContent`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: user }] }],
+        systemInstruction: { parts: [{ text: system }] },
+        generationConfig: gen,
+      }),
+      signal: AbortSignal.timeout(opts.timeoutMs),
+    });
+
+  const fail = (status: null | number, body: string): Miss => ({ status, body: body.slice(0, 300) });
+  const hard = (err: unknown): Miss => {
+    const m = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
+    console.error("[gemini] échec:", m);
+    const wait = /aborted|timeout/i.test(m);
+    return fail(null, wait
+      ? `timeout ${Math.round(opts.timeoutMs / 1000)}s — le free tier Google peut garder la requête en file ; réessaie`
+      : `réseau: ${err instanceof Error ? err.message : m}`);
   };
 
-  let res = await doit();
-  if (!res) return { status: null, body: "timeout/réseau" };
-  if (!res.ok) {
-    const body = (await res.text().catch(() => "")).slice(0, 300);
-    // 400 «thinking» inconnu de ce backend → un essai sans thinkingConfig
-    if (res.status === 400 && body.toLowerCase().includes("thinking") && gen.thinkingConfig) {
-      delete gen.thinkingConfig;
-      res = await doit();
-      if (!res) return { status: null, body: "timeout/réseau" };
-      if (!res.ok) return { status: res.status, body: (await res.text().catch(() => "")).slice(0, 300) };
-    } else {
-      return { status: res.status, body };
+  try {
+    let res = await fire();
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      // 400 «thinking» inconnu de ce backend → un essai sans thinkingConfig
+      if (res.status === 400 && body.toLowerCase().includes("thinking") && gen.thinkingConfig) {
+        delete gen.thinkingConfig;
+        res = await fire();
+        if (!res.ok) return fail(res.status, await res.text().catch(() => ""));
+      } else {
+        return fail(res.status, body);
+      }
     }
+    const json = (await res.json().catch(() => null)) as {
+      candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
+      promptFeedback?: { blockReason?: string };
+    } | null;
+    if (!json) return fail(200, "réponse illisible");
+    const block = json.promptFeedback?.blockReason;
+    if (block) return fail(200, `bloqué: ${block}`);
+    const text = (json.candidates?.[0]?.content?.parts ?? [])
+      .map((p) => p.text ?? "")
+      .join("")
+      .trim();
+    if (!text) {
+      return fail(200, `réponse vide (finishReason=${json.candidates?.[0]?.finishReason ?? "?"})`);
+    }
+    return { text, finishReason: json.candidates?.[0]?.finishReason };
+  } catch (err) {
+    return hard(err);
   }
-  const json = (await res.json().catch(() => null)) as {
-    candidates?: { content?: { parts?: { text?: string }[] }; finishReason?: string }[];
-    promptFeedback?: { blockReason?: string };
-  } | null;
-  if (!json) return { status: 200, body: "réponse illisible" };
-  const block = json.promptFeedback?.blockReason;
-  if (block) return { status: 200, body: `bloqué: ${block}` };
-  const text = (json.candidates?.[0]?.content?.parts ?? [])
-    .map((p) => p.text ?? "")
-    .join("")
-    .trim();
-  if (!text) {
-    return { status: 200, body: `réponse vide (finishReason=${json.candidates?.[0]?.finishReason ?? "?"})` };
-  }
-  return { text, finishReason: json.candidates?.[0]?.finishReason };
 }
 
 export async function geminiCompleteStep(params: {
@@ -123,23 +129,23 @@ export async function geminiCompleteStep(params: {
   return null;
 }
 
-/** Diagnostic Réglages : 1 micro-appel par clé, NE modifie pas la quarantine. */
+/** Diagnostic Réglages : 1 micro-appel PARALLÈLE par clé — une clé valide
+ * peut rester en file d'attente du free tier, une clé invalide répond vite.
+ * NE modifie pas la quarantine. */
 export async function testGeminiKeys(): Promise<{ label: string; ok: boolean; info: string }[]> {
   const keys = await geminiKeys();
-  const out: { label: string; ok: boolean; info: string }[] = [];
-  for (let i = 0; i < keys.length; i++) {
-    const r = await callModel(keys[i], "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
+  return Promise.all(keys.map(async (key, i) => {
+    const r = await callModel(key, "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
       maxOutputTokens: 64,
       temperature: 0,
-      timeoutMs: 20_000,
+      timeoutMs: 45_000,
     });
-    out.push({
+    return {
       label: `Compte ${i + 1}`,
       ok: "text" in r,
       info: "text" in r
         ? `quota libre — réponse « ${r.text.slice(0, 20)} »`
-        : `${r.status === null ? "réseau/timeout" : `HTTP ${r.status}`} — ${r.body.slice(0, 160)}`,
-    });
-  }
-  return out;
+        : `${r.status === null ? "échec" : `HTTP ${r.status}`} — ${r.body.slice(0, 180)}`,
+    };
+  }));
 }

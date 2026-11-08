@@ -17,6 +17,8 @@ type Group = {
   color: string;
   fields: { key: string; label: string; placeholder: string; secret?: boolean; hint?: string }[];
   tester?: { url: string; button: string };
+  /** Groupe à N emplacements de clés écrits dans UNE setting (virgule-jointe). */
+  multiKey?: { setting: string; count: number };
 };
 
 type ProbeRow = { label: string; ok: boolean; info: string };
@@ -24,11 +26,10 @@ type ProbeRow = { label: string; ok: boolean; info: string };
 const GROUPS: Group[] = [
   {
     title: "Gemini — moteur du Coder", icon: Sparkles, color: "#4285F4",
-    desc: "Le moteur preferé du Coder pour générer les sites : 1 clé = 1 compte Google AI Studio = 20 sites gratuits/jour. Rotation automatique entre comptes, repli LLM omniroute puis gabarit si tout est épuisé.",
+    desc: "Le moteur du Coder pour générer les sites : 1 clé = 1 compte Google AI Studio = 20 sites gratuits/jour. Rotation automatique entre comptes, repli LLM omniroute puis gabarit si tout est épuisé.",
     tester: { url: "/api/settings/gemini", button: "Tester les clés" },
-    fields: [
-      { key: "GEMINI_API_KEYS", label: "Clés API (une par compte Gmail)", placeholder: "AIza…,AIza…,AIza…", secret: true, hint: "aistudio.google.com/apikey — jusqu'à 3 comptes séparés par des virgules. Le quota gratuit Gemini se réinitialise à minuit heure du Pacifique." },
-    ],
+    multiKey: { setting: "GEMINI_API_KEYS", count: 3 },
+    fields: [],
   },
   {
     title: "LLM — omniroute", icon: BrainCircuit, color: "#a78bfa",
@@ -128,6 +129,7 @@ export default function SettingsPage() {
   const saveGroup = async (g: Group) => {
     const body: Record<string, string> = {};
     for (const f of g.fields) body[f.key] = values[f.key] ?? "";
+    if (g.multiKey) body[g.multiKey.setting] = values[g.multiKey.setting] ?? "";
     await patch(body, g.title);
   };
 
@@ -291,6 +293,48 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+            {g.multiKey && (
+              <div className="mt-1">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {Array.from({ length: g.multiKey.count }).map((_, i) => {
+                    const setting = g.multiKey!.setting;
+                    const slots = /•/.test(values[setting] ?? "")
+                      ? [values[setting] ?? "", "", ""].slice(0, g.multiKey!.count)
+                      : (values[setting] ?? "").split(",").map((x) => x.trim());
+                    return (
+                      <div key={i}>
+                        <label className="label-xs flex items-center gap-1.5 mb-1.5">
+                          <KeyRound size={10} /> Clé — Compte {i + 1}
+                        </label>
+                        <div className="relative">
+                          <input
+                            className="input font-mono !text-[12.5px]"
+                            type={!visible[`__mk${i}`] ? "password" : "text"}
+                            placeholder="AIza…"
+                            value={slots[i] ?? ""}
+                            onChange={(e) => setValues((v) => {
+                              const cur = /•/.test(v[setting] ?? "")
+                                ? [v[setting] ?? "", "", ""].slice(0, g.multiKey!.count)
+                                : (v[setting] ?? "").split(",").map((x) => x.trim());
+                              cur[i] = e.target.value.trim();
+                              while (cur.length < g.multiKey!.count) cur.push("");
+                              return { ...v, [setting]: cur.map((x) => x.trim()).filter(Boolean).join(",") };
+                            })}
+                          />
+                          <button type="button" className="absolute right-2.5 top-1/2 -translate-y-1/2 bg-transparent border-0 cursor-pointer" style={{ color: "var(--text-faint)" }}
+                            onClick={() => setVisible((v) => ({ ...v, [`__mk${i}`]: !v[`__mk${i}`] }))}>
+                            {!visible[`__mk${i}`] ? <Eye size={14} /> : <EyeOff size={14} />}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="text-[10.5px] mt-1.5" style={{ color: "var(--text-faint)" }}>
+                  Clé créée sur aistudio.google.com/apikey, avec un projet par compte Gmail. Le quota gratuit se réinitialise à minuit, heure du Pacifique.
+                </div>
+              </div>
+            )}
             {g.tester && (
               <div className="mt-4 flex flex-col gap-2">
                 <button className="btn-primary w-fit !py-2" onClick={() => runGeminiProbe(g)} disabled={probe.busy}>
