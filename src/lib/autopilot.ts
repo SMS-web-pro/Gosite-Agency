@@ -5,7 +5,7 @@
 
 import { db } from "@/db";
 import { agents, activities, inboundEmails, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
-import { and, asc, desc, eq, lt } from "drizzle-orm";
+import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ensureAgentsSeeded } from "./agents";
 import { getSetting } from "./settings";
@@ -73,6 +73,17 @@ async function agentUsable(key: string, cache: Map<string, Agent>): Promise<bool
 
 export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<TickSummary> {
   await ensureAgentsSeeded();
+  // Empreinte de santé : l'heure du dernier appel au tick, quel qu'en soit
+  // l'émetteur (moniteur externe, cron Vercel, RIO, bouton manuel). Sans elle,
+  // un ping silencieux sur un pipeline idle est indétectable côté serveur.
+  try {
+    await db.insert(settings)
+      .values({ key: "TICK_LAST_PING", value: new Date().toISOString(), updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: settings.key,
+        set: { value: sql`excluded.value`, updatedAt: new Date() },
+      });
+  } catch { /* non bloquant */ }
   const summary: TickSummary = {
     at: new Date().toISOString(),
     autopilot: (await getSetting("AUTOPILOT")) === "true",
