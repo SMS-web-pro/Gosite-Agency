@@ -70,6 +70,7 @@ const GROUPS: Group[] = [
   {
     title: "Whop — Paiements", icon: CreditCard, color: "#4ade80",
     desc: "Paymer génère les liens de paiement. Ajoutez le webhook Whop vers /api/webhooks/whop pour l'encaissement automatique.",
+    tester: { url: "/api/settings/whop", button: "Tester Whop" },
     fields: [
       { key: "WHOP_API_KEY", label: "Clé API Whop", placeholder: "whk_…", secret: true },
       { key: "WHOP_COMPANY_ID", label: "Company ID", placeholder: "biz_…" },
@@ -139,7 +140,7 @@ export default function SettingsPage() {
     await patch({ [key]: next ? "true" : "false" }, key === "AUTOPILOT" ? "Auto-pilote" : "Mode test");
   };
 
-  const runGeminiProbe = async (g: Group) => {
+  const runProbe = async (g: Group) => {
     if (!g.tester) return;
     setProbe({ busy: true });
     try {
@@ -147,7 +148,7 @@ export default function SettingsPage() {
       const j = await apiJson<{ probe?: ProbeRow[] }>(r);
       if (j?.probe) {
         setProbe({ rows: j.probe, busy: false });
-        if (!j.probe.length) setToast({ msg: "Aucune clé Gemini configurée — collez-les puis sauvez d'abord.", kind: "err" });
+        if (!j.probe.length) setToast({ msg: `Aucun résultat du test ${g.title} — vérifie la configuration puis réessaie.`, kind: "err" });
       } else {
         setProbe({ busy: false });
         setToast({ msg: "Test impossible — serveur momentanément indisponible.", kind: "err" });
@@ -296,7 +297,7 @@ export default function SettingsPage() {
             </div>
             {g.tester && (
               <div className="mt-4 flex flex-col gap-2">
-                <button className="btn-primary w-fit !py-2" onClick={() => runGeminiProbe(g)} disabled={probe.busy}>
+                <button className="btn-primary w-fit !py-2" onClick={() => runProbe(g)} disabled={probe.busy}>
                   {probe.busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {g.tester.button}
                 </button>
                 {probe.rows && probe.rows.length > 0 && (
