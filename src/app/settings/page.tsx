@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Save, Loader2, Bot, BrainCircuit, MailPlus, Triangle, CreditCard, Store,
   KeyRound, Eye, EyeOff, Shield, Zap, FlaskConical, RefreshCw, Inbox,
+  Sparkles, CheckCircle2, XOctagon,
 } from "lucide-react";
 import { Toast, apiJson } from "@/components/ui";
 import { SetupWizard } from "@/components/setup-wizard";
@@ -15,9 +16,20 @@ type Group = {
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
   color: string;
   fields: { key: string; label: string; placeholder: string; secret?: boolean; hint?: string }[];
+  tester?: { url: string; button: string };
 };
 
+type ProbeRow = { label: string; ok: boolean; info: string };
+
 const GROUPS: Group[] = [
+  {
+    title: "Gemini — moteur du Coder", icon: Sparkles, color: "#4285F4",
+    desc: "Le moteur preferé du Coder pour générer les sites : 1 clé = 1 compte Google AI Studio = 20 sites gratuits/jour. Rotation automatique entre comptes, repli LLM omniroute puis gabarit si tout est épuisé.",
+    tester: { url: "/api/settings/gemini", button: "Tester les clés" },
+    fields: [
+      { key: "GEMINI_API_KEYS", label: "Clés API (une par compte Gmail)", placeholder: "AIza…,AIza…,AIza…", secret: true, hint: "aistudio.google.com/apikey — jusqu'à 3 comptes séparés par des virgules. Le quota gratuit Gemini se réinitialise à minuit heure du Pacifique." },
+    ],
+  },
   {
     title: "LLM — omniroute", icon: BrainCircuit, color: "#a78bfa",
     desc: "Le cerveau de RIO (chat, raisonnement, outils) et de Coder (génération des sites). API compatible OpenAI.",
@@ -89,6 +101,7 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; kind: "ok" | "err" } | null>(null);
   const [visible, setVisible] = useState<Record<string, boolean>>({});
+  const [probe, setProbe] = useState<{ rows?: ProbeRow[]; busy: boolean }>({ busy: false });
   const [wizardKey, setWizardKey] = useState(0);
 
   const loadSettings = useCallback(async () => {
@@ -121,6 +134,24 @@ export default function SettingsPage() {
   const sysToggle = async (key: "AUTOPILOT" | "ALLOW_SIMULATION", next: boolean) => {
     setValues((v) => ({ ...v, [key]: next ? "true" : "false" }));
     await patch({ [key]: next ? "true" : "false" }, key === "AUTOPILOT" ? "Auto-pilote" : "Mode test");
+  };
+
+  const runGeminiProbe = async (g: Group) => {
+    if (!g.tester) return;
+    setProbe({ busy: true });
+    try {
+      const r = await fetch(g.tester.url, { cache: "no-store" });
+      const j = await apiJson<{ probe?: ProbeRow[] }>(r);
+      if (j?.probe) {
+        setProbe({ rows: j.probe, busy: false });
+        if (!j.probe.length) setToast({ msg: "Aucune clé Gemini configurée — collez-les puis sauvez d'abord.", kind: "err" });
+      } else {
+        setProbe({ busy: false });
+        setToast({ msg: "Test impossible — serveur momentanément indisponible.", kind: "err" });
+      }
+    } finally {
+      setProbe((p) => ({ ...p, busy: false }));
+    }
   };
 
   const autopilotOn = values.AUTOPILOT === "true";
@@ -236,7 +267,7 @@ export default function SettingsPage() {
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {g.fields.map((f, i) => (
+            {g.fields.map((f, i) => (
                 <div key={f.key} className={g.fields.length % 2 === 1 && i === g.fields.length - 1 ? "md:col-span-2" : ""}>
                   <label className="label-xs flex items-center gap-1.5 mb-1.5">
                     {f.secret && <KeyRound size={10} />} {f.label}
@@ -260,6 +291,24 @@ export default function SettingsPage() {
                 </div>
               ))}
             </div>
+            {g.tester && (
+              <div className="mt-4 flex flex-col gap-2">
+                <button className="btn-primary w-fit !py-2" onClick={() => runGeminiProbe(g)} disabled={probe.busy}>
+                  {probe.busy ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />} {g.tester.button}
+                </button>
+                {probe.rows && probe.rows.length > 0 && (
+                  <div className="flex flex-col gap-1.5">
+                    {probe.rows.map((row) => (
+                      <div key={row.label} className="flex items-start gap-2 text-[12px] p-2.5 rounded-lg" style={{ background: "rgba(0,0,0,.25)", border: `1px solid ${row.ok ? "rgba(0,229,160,.3)" : "rgba(248,113,113,.3)"}` }}>
+                        {row.ok ? <CheckCircle2 size={14} className="mt-0.5 flex-shrink-0" style={{ color: "var(--accent)" }} /> : <XOctagon size={14} className="mt-0.5 flex-shrink-0" style={{ color: "#f87171" }} />}
+                        <span className="text-white font-semibold flex-shrink-0">{row.label} :</span>
+                        <span style={{ color: "var(--text-dim)" }}>{row.info}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         ))
       )}

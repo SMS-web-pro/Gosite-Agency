@@ -1,7 +1,9 @@
-// Coder (VibeCoder) — génère le site client via LLM omniroute,
-// avec le gabarit interne haute qualité en secours.
+// Coder (VibeCoder) — génère le site client, moteur 1 : Gemini 3.8 Flash
+// (rotation multi-comptes gratuits), moteur 2 : LLM omniroute, moteur 3 :
+// le gabarit interne haute qualité.
 
 import { chatCompletion, extractHtml, llmConfigured } from "./llm";
+import { geminiCompleteStep, geminiKeysConfigured } from "./gemini";
 import { generateSiteHtml } from "./site-template";
 import { findNiche } from "./niches";
 
@@ -31,7 +33,7 @@ function goldenPrompt(lang: "fr" | "en"): string {
 
 export type BuildResult = {
   html: string;
-  engine: "llm" | "template";
+  engine: "gemini" | "llm" | "template";
 };
 
 export async function buildSite(clientData: Record<string, string>): Promise<BuildResult> {
@@ -40,6 +42,31 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
   // Langue imposée au site : dérivée de la fiche (LANG rempli par Mapper via
   // localeFor(pays)) — un lead US reçoit un site 100% anglais.
   const lang: "fr" | "en" = (clientData.LANG || "fr").startsWith("en") ? "en" : "fr";
+  const kickoff = lang === "en" ? "Produce the complete HTML document now." : "Produis le document HTML complet maintenant.";
+
+  if (await geminiKeysConfigured()) {
+    const sheet = Object.entries(clientData)
+      .filter(([k]) => !["NICHE_LABEL", "NICHE_ICON", "DISPLAY_FONT", "ABOUT_IMAGE_URL"].includes(k))
+      .map(([k, v]) => `${k} = ${v}`)
+      .join("\n");
+    const user =
+      `CLIENT DATA (${lang === "en" ? "sheet validated by Mapper" : "fiche validée par Mapper"}):\n${sheet}\n\n` +
+      `SECTEUR / INDUSTRY: ${niche.label}. ${lang === "en" ? `Display font to use: ${clientData.DISPLAY_FONT}. Hero image: ${clientData.HERO_IMAGE_URL}. About image: ${clientData.ABOUT_IMAGE_URL}.` : `Police display à utiliser : ${clientData.DISPLAY_FONT}. Image hero : ${clientData.HERO_IMAGE_URL}. Image about : ${clientData.ABOUT_IMAGE_URL}.`}\n` +
+      (lang === "en"
+        ? `Generate the complete single-file site now, applying ALL rules. Content must be 100% specific to the "${niche.label}" industry and locally anchored in ${clientData.CITY}, written in NATIVE US ENGLISH.`
+        : `Génère maintenant le site complet, monofichier, en appliquant TOUTES les règles. Le contenu doit être 100% spécifique au secteur "${niche.label}" et ancré dans la ville de ${clientData.CITY}.`);
+
+    const raw = await geminiCompleteStep({
+      system: goldenPrompt(lang),
+      user: `${user}\n\n${kickoff}`,
+      maxTokens: 16384,
+      temperature: 0.6,
+    });
+    if (raw) {
+      const html = extractHtml(raw);
+      if (html && html.length > 8000) return { html, engine: "gemini" };
+    }
+  }
 
   if (useLlm) {
     const sheet = Object.entries(clientData)
@@ -61,7 +88,7 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
         task: "generation_site",
         lang,
         instruction: `${goldenPrompt(lang)}\n\n${user}`,
-        input: lang === "en" ? "Produce the complete HTML document now." : "Produis le document HTML complet maintenant.",
+        input: kickoff,
         maxTokens: 16000,
         temperature: 0.6,
       })) ??

@@ -363,7 +363,7 @@ export async function buildProspectSite(p: Prospect) {
   await markAgentRunEnd("coder", true);
   await logActivity({
     agentKey: "coder", action: "site_genere",
-    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko) — moteur ${result.engine === "llm" ? "LLM omniroute" : "gabarit interne"}.`,
+    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko) — moteur ${result.engine === "gemini" ? "Gemini 3.8 Flash" : result.engine === "llm" ? "LLM omniroute" : "gabarit interne"}.`,
     level: "success", prospectId: p.id, meta: { engine: result.engine, size: result.html.length },
   });
   return { ...result, slug };
