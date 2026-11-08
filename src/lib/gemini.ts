@@ -19,7 +19,15 @@ const quarantine: QuarantineMap = {};
 let cursor = 0;
 
 export async function geminiKeys(): Promise<string[]> {
-  return parseKeys(await getSetting("GEMINI_API_KEYS"));
+  // 3 emplacements indépendants (Réglages) + l'historique GEMINI_API_KEYS
+  // (virgule-joint) pour compat ; parseKeys dédoublonne tout cela.
+  const [k1, k2, k3, legacy] = await Promise.all([
+    getSetting("GEMINI_API_KEY_1"),
+    getSetting("GEMINI_API_KEY_2"),
+    getSetting("GEMINI_API_KEY_3"),
+    getSetting("GEMINI_API_KEYS"),
+  ]);
+  return parseKeys([k1, k2, k3, legacy].join(","));
 }
 
 export async function geminiKeysConfigured(): Promise<boolean> {
