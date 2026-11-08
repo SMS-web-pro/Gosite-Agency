@@ -1,12 +1,15 @@
-// Gemini 3.8 Flash — moteur DÉDIÉ du Coder.
-// Rotation multi-clés (le RPD gratuit = par projet Google : 20 req/jour/compte),
-// quarantine 429 jusqu'au minuit Pacific, retry anti-«thinkingConfig», et
+// Gemini Flash — moteur DÉDIÉ du Coder.
+// Rotation multi-clés (le RPD gratuit = par projet Google : 20 req/jour/compte,
+// 500/jour pour les flash-lite), quarantine 429 jusqu'au minuit Pacific,
+// retry anti-«thinkingConfig», échelle de repli 503 «forte demande»
+// (3.8/3.7 saturables la nuit → dégradation en 3.6 puis 3.5-lite) et
 // fallback géré par le Coder (omniroute → gabarit).
 
 import { getSetting } from "./settings";
 import { nextPacificMidnight, parseKeys, pickKeyOrder, type QuarantineMap } from "./gemini-keys";
 
-const DEFAULT_MODEL = "gemini-3.8-flash";
+const DEFAULT_MODEL = "gemini-3.6-flash";
+const LADDER_FALLBACKS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 const CALL_TIMEOUT_MS = 150_000;
 const QUARANTINE_SOFT_MS = 60_000;      // 5xx / réseau : îlot court
@@ -37,7 +40,9 @@ async function callModel(
     temperature: opts.temperature,
     maxOutputTokens: opts.maxOutputTokens,
   };
-  if (!opts.bare) gen.thinkingConfig = { thinkingLevel: "low" };
+  // Les modèles «lite» n'ont pas de pensée : on n'envoie pas thinkingConfig
+  // (il serait recalé en 400 et déclencherait un second appel pour rien).
+  if (!opts.bare && !model.includes("lite")) gen.thinkingConfig = { thinkingLevel: "low" };
   const fire = (): Promise<Response> =>
     fetch(`${BASE}/models/${model}:generateContent`, {
       method: "POST",
@@ -97,6 +102,12 @@ export async function geminiModel(): Promise<string> {
   return (await getSetting("GEMINI_MODEL")).trim() || DEFAULT_MODEL;
 }
 
+/** L'échelle de repli 503 : modèle choisi en tête, plus les secours connus,
+ * dédoublonnés (ex. 3.8 → [3.8, 3.6, 3.5-lite] ; 3.5-lite → [3.5-lite]). */
+export function modelLadder(base: string): string[] {
+  return [base, ...LADDER_FALLBACKS.filter((m) => m !== base)];
+}
+
 export async function geminiCompleteStep(params: {
   system: string;
   user: string;
@@ -106,31 +117,40 @@ export async function geminiCompleteStep(params: {
 }): Promise<string | null> {
   const keys = await geminiKeys();
   if (keys.length === 0) return null;
-  const model = await geminiModel();
+  const ladder = modelLadder(await geminiModel());
 
   for (const key of pickKeyOrder(keys, quarantine, Date.now(), (cursor++) % keys.length)) {
-    const r = await callModel(key, model, params.system, params.user, {
-      maxOutputTokens: params.maxTokens ?? 16384,
-      temperature: params.temperature ?? 0.6,
-      timeoutMs: params.timeoutMs ?? CALL_TIMEOUT_MS,
-    });
-    if ("text" in r) return r.text;
+    for (const model of ladder) {
+      const r = await callModel(key, model, params.system, params.user, {
+        maxOutputTokens: params.maxTokens ?? 16384,
+        temperature: params.temperature ?? 0.6,
+        timeoutMs: params.timeoutMs ?? CALL_TIMEOUT_MS,
+      });
+      if ("text" in r) return r.text;
 
-    const now = Date.now();
-    if (r.status === 429) {
-      const until = nextPacificMidnight(now);
-      quarantine[key] = until;
-      console.error(`[gemini] 429 → clé en îlot jusqu'à minuit Pacific (${new Date(until).toISOString()}).`);
-      continue;
+      const now = Date.now();
+      if (r.status === 429) {
+        const until = nextPacificMidnight(now);
+        quarantine[key] = until;
+        console.error(`[gemini] 429 → clé en îlot jusqu'à minuit Pacific (${new Date(until).toISOString()}).`);
+        break; // clé épuisée : on passe à la clé suivante
+      }
+      if (r.status === 503) {
+        // Saturé CE modèle, clé saine : pas d'isolement, essai du modèle de
+        // secours avec la même clé immédiatement.
+        console.error(`[gemini] 503 «forte demande» sur ${model} — repli : ${r.body.slice(0, 120)}`);
+        continue;
+      }
+      if (r.status === null || (r.status >= 500 && r.status < 600) || (r.status === 200)) {
+        quarantine[key] = now + QUARANTINE_SOFT_MS;
+        console.error(`[gemini] stat ${r.status ?? "réseau"} — îlot 60s : ${r.body.slice(0, 160)}`);
+        continue;
+      }
+      // 401/403/400 tarif, région, clé piègée… : îlot long pour la clé fautive
+      console.error(`[gemini] ${r.status} — îlot 24h : ${r.body.slice(0, 160)}`);
+      quarantine[key] = now + QUARANTINE_BAD_MS;
+      break;
     }
-    if (r.status === null || (r.status >= 500 && r.status < 600) || (r.status === 200)) {
-      quarantine[key] = now + QUARANTINE_SOFT_MS;
-      console.error(`[gemini] stat ${r.status ?? "réseau"} — îlot 60s : ${r.body.slice(0, 160)}`);
-      continue;
-    }
-    // 401/403/400 tarif, région, clé piègée… : îlot long pour la clé fautive
-    console.error(`[gemini] ${r.status} — îlot 24h : ${r.body.slice(0, 160)}`);
-    quarantine[key] = now + QUARANTINE_BAD_MS;
   }
   return null;
 }
@@ -142,21 +162,28 @@ export async function testGeminiKeys(): Promise<{ label: string; ok: boolean; in
   const keys = await geminiKeys();
   const model = await geminiModel();
   return Promise.all(keys.map(async (key, i) => {
-    // Une clé AI Studio commence TOUJOURS par « AIza » (~39 car). Les jetons
-    // « AQ.AB… »/« ya29. » sont des credentials temporaux, qui ne marchent pas
-    // ici : on évite 120s d'attente et on indique où créer la bonne clé.
-    if (!key.startsWith("AIza")) {
+    // Deux formats de clés valables pour l'API Gemini : « AIza… » (AI Studio,
+    // historique) et « AQ.… » (format 2025-2026, console Google Cloud).
+    // « ya29. »/« go… » = jetons OAuth temporaires : rejetés d'office.
+    if (!key.startsWith("AIza") && !key.startsWith("AQ.")) {
       return {
         label: `Compte ${i + 1}`,
         ok: false,
-        info: `ce n'est pas une clé AI Studio (début « ${key.slice(0, 4)}… ») — il faut une clé commençant par « AIza », créée sur aistudio.google.com/apikey`,
+        info: `format inattendu (début « ${key.slice(0, 4)}… ») — crée une clé « AIza » sur aistudio.google.com/apikey ou une clé API dans la console Google Cloud`,
       };
     }
     const r = await callModel(key, model, "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
-      maxOutputTokens: 64,
+      maxOutputTokens: 512,
       temperature: 0,
       timeoutMs: 120_000,
     });
+    if (!("text" in r) && r.status === 503) {
+      return {
+        label: `Compte ${i + 1} (${model})`,
+        ok: false,
+        info: "clé validée par Google (authentification OK) mais modèle saturé « forte demande » — réessaie dans quelques minutes ; la génération de sites se repliera toute seule sur un modèle libre",
+      };
+    }
     return {
       label: `Compte ${i + 1} (${model})`,
       ok: "text" in r,

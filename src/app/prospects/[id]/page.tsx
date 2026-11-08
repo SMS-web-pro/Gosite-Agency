@@ -112,7 +112,7 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
       });
       const j = await apiJson<{ ok?: boolean; url?: string; engine?: string; reason?: string; error?: string }>(r);
       if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
-        if (j.ok) setToast({ msg: `${label} : succès.${j.url ? ` → ${j.url}` : ""}${j.engine ? ` (moteur ${j.engine === "gemini" ? "Gemini 3.8" : j.engine === "llm" ? "LLM omniroute" : "gabarit interne"})` : ""}`, kind: "ok" });
+        if (j.ok) setToast({ msg: `${label} : succès.${j.url ? ` → ${j.url}` : ""}${j.engine ? ` (moteur ${j.engine === "gemini" ? "Gemini" : j.engine === "llm" ? "LLM omniroute" : "gabarit interne"})` : ""}`, kind: "ok" });
       else setToast({ msg: j.reason ?? j.error ?? `${label} : avertissement.`, kind: "err" });
       await reload();
     } finally {

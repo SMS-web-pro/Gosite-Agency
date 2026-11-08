@@ -1,4 +1,4 @@
-// Coder (VibeCoder) — génère le site client, moteur 1 : Gemini 3.8 Flash
+// Coder (VibeCoder) — génère le site client, moteur 1 : Gemini (Flash)
 // (rotation multi-comptes gratuits), moteur 2 : LLM omniroute, moteur 3 :
 // le gabarit interne haute qualité.
 

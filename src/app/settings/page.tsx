@@ -30,7 +30,7 @@ const GROUPS: Group[] = [
     tester: { url: "/api/settings/gemini", button: "Tester les clés" },
     multiKey: { setting: "GEMINI_API_KEYS", count: 3 },
     fields: [
-      { key: "GEMINI_MODEL", label: "Modèle", placeholder: "gemini-3.8-flash", hint: "gemini-3.5-flash-lite = 25× plus de quotas/jour et files plus courtes, rendu un cran moins fin" },
+      { key: "GEMINI_MODEL", label: "Modèle", placeholder: "gemini-3.6-flash", hint: "vide = gemini-3.6-flash ; gemini-3.5-flash-lite = 500 req/jour/compte, file plus courte ; si 3.8/3.7 sont «forte demande», repli auto sur 3.6 puis 3.5-lite" },
     ],
   },
   {
