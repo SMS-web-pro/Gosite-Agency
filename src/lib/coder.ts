@@ -59,44 +59,58 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
   // localeFor(pays)) — un lead US reçoit un site 100% anglais.
   const lang: "fr" | "en" = (clientData.LANG || "fr").startsWith("en") ? "en" : "fr";
   const kickoff = lang === "en" ? "Produce the complete HTML document now." : "Produis le document HTML complet maintenant.";
+  const sheet = Object.entries(clientData)
+    .filter(([k]) => !["NICHE_LABEL", "NICHE_ICON", "DISPLAY_FONT", "ABOUT_IMAGE_URL"].includes(k))
+    .map(([k, v]) => `${k} = ${v}`)
+    .join("\n");
+  const user =
+    `CLIENT DATA (${lang === "en" ? "sheet validated by Mapper" : "fiche validée par Mapper"}):\n${sheet}\n\n` +
+    `SECTEUR / INDUSTRY: ${niche.label}. ${lang === "en" ? `Display font to use: ${clientData.DISPLAY_FONT}. Hero image: ${clientData.HERO_IMAGE_URL}. About image: ${clientData.ABOUT_IMAGE_URL}. Gallery images (6, in order): ${clientData.GALLERY_IMAGE_URLS}.` : `Police display à utiliser : ${clientData.DISPLAY_FONT}. Image hero : ${clientData.HERO_IMAGE_URL}. Image about : ${clientData.ABOUT_IMAGE_URL}. Images de galerie (6, dans l'ordre) : ${clientData.GALLERY_IMAGE_URLS}.`}\n` +
+    (lang === "en"
+      ? `Generate the complete single-file site now, applying ALL rules. Content must be 100% specific to the "${niche.label}" industry and locally anchored in ${clientData.CITY}, written in NATIVE US ENGLISH.`
+      : `Génère maintenant le site complet, monofichier, en appliquant TOUTES les règles. Le contenu doit être 100% spécifique au secteur "${niche.label}" et ancré dans la ville de ${clientData.CITY}.`);
 
   if (await geminiKeysConfigured()) {
-    const sheet = Object.entries(clientData)
-      .filter(([k]) => !["NICHE_LABEL", "NICHE_ICON", "DISPLAY_FONT", "ABOUT_IMAGE_URL"].includes(k))
-      .map(([k, v]) => `${k} = ${v}`)
-      .join("\n");
-    const user =
-      `CLIENT DATA (${lang === "en" ? "sheet validated by Mapper" : "fiche validée par Mapper"}):\n${sheet}\n\n` +
-      `SECTEUR / INDUSTRY: ${niche.label}. ${lang === "en" ? `Display font to use: ${clientData.DISPLAY_FONT}. Hero image: ${clientData.HERO_IMAGE_URL}. About image: ${clientData.ABOUT_IMAGE_URL}. Gallery images (6, in order): ${clientData.GALLERY_IMAGE_URLS}.` : `Police display à utiliser : ${clientData.DISPLAY_FONT}. Image hero : ${clientData.HERO_IMAGE_URL}. Image about : ${clientData.ABOUT_IMAGE_URL}. Images de galerie (6, dans l'ordre) : ${clientData.GALLERY_IMAGE_URLS}.`}\n` +
-      (lang === "en"
-        ? `Generate the complete single-file site now, applying ALL rules. Content must be 100% specific to the "${niche.label}" industry and locally anchored in ${clientData.CITY}, written in NATIVE US ENGLISH.`
-        : `Génère maintenant le site complet, monofichier, en appliquant TOUTES les règles. Le contenu doit être 100% spécifique au secteur "${niche.label}" et ancré dans la ville de ${clientData.CITY}.`);
-
+    const g0 = Date.now();
+    // Budget : 250 s d'horloge murale pour TOUTE l'échelle Gemini (essai 120 s
+    // par appel), afin que la réserve template reste atteignable dans la
+    // route 300 s même si le free tier est lent ou saturé.
     const raw = await geminiCompleteStep({
       system: goldenPrompt(lang),
       user: `${user}\n\n${kickoff}`,
       maxTokens: 16384,
-      temperature: 0.6,
+      temperature: 0.55,
+      timeoutMs: 120_000,
+      deadlineMs: 250_000,
     });
+    const elapsed = Date.now() - g0;
     if (raw) {
       const html = extractHtml(raw);
       if (html && html.length > 8000) return { html, engine: "gemini" };
     }
-  }
+    // Cerveau omniroute uniquement si le temps le permet : un 2e moteur mort
+    // ne doit jamais détruire la garantie template (route plafonnée à 300 s).
+    if (useLlm && elapsed < 90_000) {
+      // Le cerveau partagé injecte les skills et apprentissages de Coder
+      const { agentThink } = await import("./agent-brain");
+      const raw =
+        (await agentThink({
+          agent: "coder",
+          task: "generation_site",
+          lang,
+          instruction: `${goldenPrompt(lang)}\n\n${user}`,
+          input: kickoff,
+          maxTokens: 16000,
+          temperature: 0.6,
+        })) ??
+        (await chatCompletion({ system: goldenPrompt(lang), user, maxTokens: 16000, temperature: 0.6, timeoutMs: 70_000 }));
 
-  if (useLlm) {
-    const sheet = Object.entries(clientData)
-      .filter(([k]) => !["NICHE_LABEL", "NICHE_ICON", "DISPLAY_FONT", "ABOUT_IMAGE_URL"].includes(k))
-      .map(([k, v]) => `${k} = ${v}`)
-      .join("\n");
-    const user =
-      `CLIENT DATA (${lang === "en" ? "sheet validated by Mapper" : "fiche validée par Mapper"}):\n${sheet}\n\n` +
-      `SECTEUR / INDUSTRY: ${niche.label}. ${lang === "en" ? `Display font to use: ${clientData.DISPLAY_FONT}. Hero image: ${clientData.HERO_IMAGE_URL}. About image: ${clientData.ABOUT_IMAGE_URL}. Gallery images (6, in order): ${clientData.GALLERY_IMAGE_URLS}.` : `Police display à utiliser : ${clientData.DISPLAY_FONT}. Image hero : ${clientData.HERO_IMAGE_URL}. Image about : ${clientData.ABOUT_IMAGE_URL}. Images de galerie (6, dans l'ordre) : ${clientData.GALLERY_IMAGE_URLS}.`}\n` +
-      (lang === "en"
-        ? `Generate the complete single-file site now, applying ALL rules. Content must be 100% specific to the "${niche.label}" industry and locally anchored in ${clientData.CITY}, written in NATIVE US ENGLISH.`
-        : `Génère maintenant le site complet, monofichier, en appliquant TOUTES les règles. Le contenu doit être 100% spécifique au secteur "${niche.label}" et ancré dans la ville de ${clientData.CITY}.`);
-
-    // Le cerveau partagé injecte les skills et apprentissages de Coder
+      if (raw) {
+        const html = extractHtml(raw);
+        if (html && html.length > 8000) return { html, engine: "llm" };
+      }
+    }
+  } else if (useLlm) {
     const { agentThink } = await import("./agent-brain");
     const raw =
       (await agentThink({
@@ -107,8 +121,7 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
         input: kickoff,
         maxTokens: 16000,
         temperature: 0.6,
-      })) ??
-      (await chatCompletion({ system: goldenPrompt(lang), user, maxTokens: 16000, temperature: 0.6 }));
+      })) ?? (await chatCompletion({ system: goldenPrompt(lang), user, maxTokens: 16000, temperature: 0.6 }));
 
     if (raw) {
       const html = extractHtml(raw);

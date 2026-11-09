@@ -122,13 +122,23 @@ export async function geminiCompleteStep(params: {
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  /** Horloge murale de la LADDER entière : dés qu'elle est franchie on
+   *  s'arrête (retour null) au lieu de lancer un énième essai qui ne pourra
+   *  pas finir dans le budget du caller (route 300 s, tick, etc.). */
+  deadlineMs?: number;
 }): Promise<string | null> {
   const keys = await geminiKeys();
   if (keys.length === 0) return null;
   const ladder = modelLadder(await geminiModel());
+  const t0 = Date.now();
+  const wall = params.deadlineMs ?? Number.POSITIVE_INFINITY;
 
   for (const key of pickKeyOrder(keys, quarantine, Date.now(), (cursor++) % keys.length)) {
     for (const model of ladder) {
+      if (Date.now() - t0 >= wall) {
+        console.error(`[gemini] échéance wall-clock atteinte (${wall} ms) — arrêt de l'échelle.`);
+        return null;
+      }
       const r = await callModel(key, model, params.system, params.user, {
         maxOutputTokens: params.maxTokens ?? 16384,
         temperature: params.temperature ?? 0.6,

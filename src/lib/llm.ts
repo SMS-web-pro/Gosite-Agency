@@ -16,6 +16,9 @@ export async function chatCompletion(params: {
   user: string;
   maxTokens?: number;
   temperature?: number;
+  /** Délai réseau de l'appel — par défaut conservé, réduit côté Coder pour
+   *  tenir dans le budget de la route (le cerveau omniroute est lent). */
+  timeoutMs?: number;
 }): Promise<string | null> {
   const baseUrl = (await getSetting("LLM_BASE_URL")).replace(/\/+$/, "");
   const apiKey = await getSetting("LLM_API_KEY");
@@ -35,7 +38,7 @@ export async function chatCompletion(params: {
         max_tokens: params.maxTokens ?? 8000,
         temperature: params.temperature ?? 0.7,
       }),
-      signal: AbortSignal.timeout(150000),
+      signal: AbortSignal.timeout(params.timeoutMs ?? 150000),
     });
     if (!res.ok) {
       console.error(`[llm] HTTP ${res.status} (${model}) — appel ${params.system.slice(0, 60)}…`);
