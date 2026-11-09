@@ -3,7 +3,13 @@
 // template d'agence responsive. Sans clé Brevo : envoi simulé et journalisé.
 
 import { getSetting } from "./settings";
+import { injectPixel, linkifyEscaped, newEmailToken, trackifyText, wrapLinks } from "./track";
 import type { Prospect } from "@/db/schema";
+
+/** Base d'URL absolue pour les liens de tracking (pixel + clics). */
+export async function appBaseUrl(): Promise<string> {
+  return ((await getSetting("APP_BASE_URL")).trim() || "https://gosite.digital").replace(/\/+$/, "");
+}
 
 export async function brevoConfigured(): Promise<boolean> {
   return Boolean((await getSetting("BREVO_API_KEY")) && (await getSetting("BREVO_SENDER_EMAIL")));
@@ -287,7 +293,7 @@ function renderEmailText(opts: { p: Prospect; copy: SalesCopy; previewUrl: strin
 
 /* ─────────── Envoi ─────────── */
 
-export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string; subject?: string; bodyHtml?: string };
+export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string; subject?: string; bodyHtml?: string; token?: string };
 
 export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<SendResult> {
   // Opt-out : aucune copie, aucun appel LLM pour une adresse désinscrite.
@@ -314,9 +320,11 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
   const copy = coerceCopy(ai, lang, p);
   const senderEmail = await getSetting("BREVO_SENDER_EMAIL");
   const agencyAddress = await getSetting("AGENCY_ADDRESS");
-  const bodyHtml = renderEmail({ p, copy, previewUrl, price, currency, lang, agencyAddress });
-  const bodyText = renderEmailText({ p, copy, previewUrl, price, currency, lang });
-  const content: SendResult = { ok: false, simulated: false, subject: copy.subject, bodyHtml };
+  const token = newEmailToken();
+  const appBase = await appBaseUrl();
+  const bodyHtml = injectPixel(wrapLinks(renderEmail({ p, copy, previewUrl, price, currency, lang, agencyAddress }), appBase, token), appBase, token);
+  const bodyText = trackifyText(renderEmailText({ p, copy, previewUrl, price, currency, lang }), appBase, token);
+  const content: SendResult = { ok: false, simulated: false, subject: copy.subject, bodyHtml, token };
 
   if (!p.email) return { ...content, ok: false, simulated: false, error: "Email absent" };
   if (!(await brevoConfigured())) {
@@ -359,7 +367,8 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
 
 // Réponse d'agent (Saler/Paymer/Support) à un message client entrant.
 // Même discipline que l'offre : texte + HTML simples, List-Unsubscribe,
-// footer adresse légale, threading In-Reply-To/References.
+// footer adresse légale, threading In-Reply-To/References — et tracking :
+// le token renvoyé est archivé avec l'email (pixel + liens redirigés).
 export async function sendAgentReply(params: {
   to: string;
   subject: string;
@@ -368,7 +377,7 @@ export async function sendAgentReply(params: {
   references?: string;
   /** Langue du client (footer STOP localisé) — défaut fr. */
   lang?: "fr" | "en";
-}): Promise<{ ok: boolean; simulated?: boolean; messageId?: string; error?: string }> {
+}): Promise<{ ok: boolean; simulated?: boolean; messageId?: string; error?: string; token?: string }> {
   if (!params.to) return { ok: false, error: "Email destinataire absent" };
   if (!(await brevoConfigured())) {
     return { ok: false, error: "Brevo non configuré (BREVO_API_KEY + email expéditeur dans Réglages)" };
@@ -386,6 +395,15 @@ export async function sendAgentReply(params: {
   };
   if (params.inReplyTo) headers["In-Reply-To"] = params.inReplyTo;
   if (params.references) headers["References"] = params.references;
+  const token = newEmailToken();
+  const appBase = await appBaseUrl();
+  const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const bodyHtml =
+    `<div style="font-family:${FONT};font-size:14.5px;color:#22262e;line-height:1.65">` +
+    linkifyEscaped(esc(params.bodyText).replace(/\n/g, "<br>"), appBase, token) +
+    `<br><br><span style="font-size:12px;color:#8a90a0">${esc(footer.trim())}</span><br>` +
+    injectPixel("", appBase, token) +
+    `</div>`;
   try {
     const res = await fetch("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
@@ -398,14 +416,15 @@ export async function sendAgentReply(params: {
         to: [{ email: params.to }],
         replyTo: { email: senderEmail },
         subject: params.subject,
-        textContent: fullText,
+        htmlContent: bodyHtml,
+        textContent: trackifyText(fullText, appBase, token),
         headers,
       }),
       signal: AbortSignal.timeout(20000),
     });
     const json = (await res.json()) as { messageId?: string; message?: string };
     if (!res.ok) return { ok: false, error: json.message ?? `HTTP ${res.status}` };
-    return { ok: true, messageId: json.messageId };
+    return { ok: true, messageId: json.messageId, token };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "network" };
   }

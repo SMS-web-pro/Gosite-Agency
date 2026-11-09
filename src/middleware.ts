@@ -7,11 +7,15 @@ const COOKIE = "gsd_admin";
 // - /api/telegram/webhook → header x-telegram-bot-api-secret-token
 // - /api/webhooks/whop  → ?secret=CRON_SECRET (URL configurée dans Whop)
 // - /api/webhooks/email → ?secret=EMAIL_WEBHOOK_SECRET (Worker Cloudflare)
+// Routes de tracking des emails : publiques par design (ce sont les clics des
+// destinataires), sécurisées par le token unique de chaque email.
 const PUBLIC_PREFIXES = [
   "/api/cron/tick",
   "/api/telegram/webhook",
   "/api/webhooks/whop",
   "/api/webhooks/email",
+  "/api/track/open",
+  "/api/track/click",
   "/api/login",
 ];
 

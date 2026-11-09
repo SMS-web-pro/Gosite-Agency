@@ -81,7 +81,15 @@ CREATE TABLE IF NOT EXISTS emails (
   status text NOT NULL DEFAULT 'sent',
   message_id text,
   error text,
-  created_at timestamp NOT NULL DEFAULT now()
+  created_at timestamp NOT NULL DEFAULT now(),
+  token text,
+  opened_at timestamp,
+  opens integer NOT NULL DEFAULT 0,
+  clicks integer NOT NULL DEFAULT 0,
+  click_site integer NOT NULL DEFAULT 0,
+  click_payment integer NOT NULL DEFAULT 0,
+  last_click_at timestamp,
+  last_click_url text
 );
 CREATE TABLE IF NOT EXISTS settings (
   key text PRIMARY KEY,
@@ -187,6 +195,14 @@ CREATE TABLE IF NOT EXISTS ai_calls (
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS ai_score integer;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS ai_insight text;
 ALTER TABLE prospects ADD COLUMN IF NOT EXISTS fail_count integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS token text;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS opened_at timestamp;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS opens integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS clicks integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS click_site integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS click_payment integer NOT NULL DEFAULT 0;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_click_at timestamp;
+ALTER TABLE emails ADD COLUMN IF NOT EXISTS last_click_url text;
 -- Unicité des sous-domaines : deux leads homonymes ne doivent jamais écraser
 -- le site l'un de l'autre. Index partiel : plusieurs NULL autorisés.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_prospects_site_slug ON prospects (site_slug) WHERE site_slug IS NOT NULL;
@@ -199,6 +215,7 @@ CREATE INDEX IF NOT EXISTS idx_rio_messages_created ON rio_messages (created_at 
 CREATE INDEX IF NOT EXISTS idx_lead_notes_prospect ON lead_notes (prospect_id);
 CREATE INDEX IF NOT EXISTS idx_emails_prospect ON emails (prospect_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_message ON emails (message_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_token ON emails (token) WHERE token IS NOT NULL;
 `;
 
 let ready: Promise<void> | null = null;

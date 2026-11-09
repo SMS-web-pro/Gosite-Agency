@@ -22,3 +22,10 @@ export async function GET(_req: NextRequest, ctx: Ctx) {
   if (!rows[0]) return NextResponse.json({ error: "Email introuvable" }, { status: 404 });
   return NextResponse.json({ email: { ...rows[0].email, businessName: rows[0].businessName } });
 }
+
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
+  const { id } = await ctx.params;
+  const j = await db.delete(emails).where(eq(emails.id, Number(id))).returning();
+  if (j.length === 0) return NextResponse.json({ error: "Email introuvable" }, { status: 404 });
+  return NextResponse.json({ ok: true, deleted: j.length });
+}

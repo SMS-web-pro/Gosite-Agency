@@ -281,6 +281,7 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     bodyHtml: `<p>${escapeHtml(reply).replace(/\n/g, "<br>")}</p>`,
     status: "agent_reply",
     messageId: sent.messageId,
+    token: sent.token ?? null,
   });
   await logActivity({
     agentKey: parsed.agent,

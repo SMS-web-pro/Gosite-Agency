@@ -110,6 +110,15 @@ export const emails = pgTable("emails", {
   messageId: text("message_id"),
   error: text("error"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  // Tracking d'ouverture et de clics (pixel + redirection via /api/track/*)
+  token: text("token"),
+  openedAt: timestamp("opened_at"),
+  opens: integer("opens").notNull().default(0),
+  clicks: integer("clicks").notNull().default(0),
+  clickSite: integer("click_site").notNull().default(0),
+  clickPayment: integer("click_payment").notNull().default(0),
+  lastClickAt: timestamp("last_click_at"),
+  lastClickUrl: text("last_click_url"),
 });
 
 // ─────────────────────────────────────────────

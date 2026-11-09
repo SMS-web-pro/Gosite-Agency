@@ -526,7 +526,7 @@ export async function contactProspect(p: Prospect) {
   await tryArchive({
     prospectId: p.id, toEmail: p.email ?? "", subject: res.subject ?? null,
     bodyHtml: res.bodyHtml ?? null, status: res.simulated ? "simulated" : "sent",
-    messageId: res.messageId ?? null,
+    messageId: res.messageId ?? null, token: res.token ?? null,
   });
   await db.update(prospects).set({ salesEmailId: res.messageId ?? null, contactedAt: new Date(), stage: "contacted", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("saler", true);
