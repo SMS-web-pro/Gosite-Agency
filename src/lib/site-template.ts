@@ -56,11 +56,19 @@ export function generateSiteHtml(d: D): string {
         <a href="#contact" class="service-link">Demander ce service <i data-lucide="arrow-right"></i></a>
       </div>`).join("");
 
+  // Galerie : photos réelles fournies (GALLERY_IMAGE_URLS, une par slot) quand
+  // elles existent ; sinon repli sur les dégradés d'origine. L'onerror masque
+  // l'image → le dégradé + l'icône sous-jacents prennent le relais, jamais de
+  // carré cassé.
+  const galleryUrls = (d.GALLERY_IMAGE_URLS || "").split("|").map((s) => s.trim()).filter(Boolean);
   const galleryHtml = niche.gallery.map((g, i) => {
     const c = i % 3 === 0 ? primary : i % 3 === 1 ? accent : shade(primary, 25);
+    const photo = galleryUrls[i];
+    const img = photo ? `<img class="gallery-photo" src="${esc(photo)}" alt="${esc(name)} — ${esc(g.title)}" loading="lazy" decoding="async" onerror="this.remove()">` : "";
     return `
       <div class="gallery-item" data-aos="fade-up" data-aos-delay="${(i % 3) * 80}">
-        <div class="gallery-placeholder" style="--card-accent:${c}">
+        <div class="gallery-placeholder has-photo" style="--card-accent:${c}">
+          ${img}
           <div class="gallery-icon"><i data-lucide="${g.icon}"></i></div>
           <div class="gallery-info"><h4>${esc(g.title)}</h4><p>${esc(g.desc)}</p></div>
           <div class="gallery-tag">${esc(g.tag)}</div>
@@ -392,6 +400,12 @@ h2{font-family:var(--font-display);font-size:clamp(2rem,4.5vw,3rem);line-height:
 .gallery-placeholder{aspect-ratio:4/3;background:linear-gradient(135deg,var(--card-accent),color-mix(in srgb,var(--card-accent) 70%,black));display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:32px;position:relative;overflow:hidden;transition:var(--transition);cursor:pointer}
 .gallery-placeholder::before{content:'';position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4z'/%3E%3C/g%3E%3C/svg%3E");opacity:.06}
 .gallery-placeholder:hover{filter:brightness(1.12);transform:scale(1.02)}
+.gallery-placeholder.has-photo::after{content:'';position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,.72),rgba(0,0,0,.18) 55%,rgba(0,0,0,.05));pointer-events:none}
+.gallery-placeholder.has-photo .gallery-icon{display:none}
+.gallery-placeholder.has-photo .gallery-info{position:relative;z-index:2}
+.gallery-placeholder.has-photo .gallery-tag{z-index:2}
+.gallery-photo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:var(--transition)}
+.gallery-placeholder.has-photo:hover .gallery-photo{transform:scale(1.06)}
 .gallery-icon svg{width:52px;height:52px;color:rgba(255,255,255,.9);filter:drop-shadow(0 4px 12px rgba(0,0,0,.2))}
 .gallery-info{text-align:center;color:#fff}
 .gallery-info h4{font-size:1rem;font-weight:700;margin-bottom:4px}

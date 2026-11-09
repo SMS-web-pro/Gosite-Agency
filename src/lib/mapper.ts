@@ -1,6 +1,7 @@
 // Mapper — remplit et valide la fiche client complète.
 import type { Prospect } from "@/db/schema";
 import { findNiche, localeFor } from "./niches";
+import { pickSeededImages } from "./images";
 
 export function buildClientSheet(p: Prospect): Record<string, string> {
   const niche = findNiche(p.businessType);
@@ -17,6 +18,10 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
   const hours = (p.hours ?? {}) as Record<string, string>;
   const city = p.city ?? "";
   const name = p.businessName;
+  // Images déterministes et DIFFÉRENTES pour chaque lead (seed nom+ville) :
+  // héros, about et 6 photos de galerie piochées dans le pool niche sans
+  // répétition d'un site à l'autre.
+  const imgs = pickSeededImagesSafe(niche.imagePool, `${name}|${city}`, 6, niche.heroImage, niche.aboutImage);
   const rating = parseFloat(String(p.rating ?? "0")) || 0;
   const reviews = p.reviewCount ?? 0;
 
@@ -69,8 +74,9 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
     PAYMENT: "",
     INSTAGRAM: "none",
     FACEBOOK: "none",
-    HERO_IMAGE_URL: niche.heroImage,
-    ABOUT_IMAGE_URL: niche.aboutImage,
+    HERO_IMAGE_URL: imgs.hero,
+    ABOUT_IMAGE_URL: imgs.about,
+    GALLERY_IMAGE_URLS: imgs.gallery.join("|"),
     NICHE_LABEL: niche.label,
     NICHE_ICON: niche.icon,
   };
@@ -78,6 +84,12 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
 
 function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+/** Jamais bloquant : pool manquant → repli héros/about déclaratifs de la niche. */
+function pickSeededImagesSafe(pool: string[], seed: string, count: number, heroFb: string, aboutFb: string) {
+  if (pool.length > 0) return pickSeededImages(pool, seed, count);
+  return { hero: heroFb, about: aboutFb, gallery: [] as string[] };
 }
 
 // Required fields of the sheet — Mapper validates they are filled

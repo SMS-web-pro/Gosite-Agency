@@ -14,6 +14,9 @@ export type NicheContent = {
   displayFont: string;
   heroImage: string;
   aboutImage: string;
+  /** Pool d'images Unsplash full HD (héros/about/galerie) — deux sites n'y
+   *  puisent JAMAIS la même combinaison (rotation seedée côté Mapper). */
+  imagePool: string[];
   icon: string;
   taglineTemplates: string[];
   trustBadges: string[];
@@ -35,6 +38,12 @@ export const NICHES: NicheContent[] = [
     style: "urban", displayFont: "Fraunces",
     heroImage: "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1920&q=80",
     aboutImage: "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1920&q=80",
+    imagePool: [
+      "https://images.unsplash.com/photo-1585747860715-2ba37e788b70?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1503951914875-452162b0f3f1?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1621605815971-fbc98d665c07?w=1920&q=80&auto=format&fit=crop",
+    ],
     icon: "scissors",
     taglineTemplates: ["L'art de la coupe, la précision en plus", "Votre style, notre signature", "La coupe parfaite, à chaque visite"],
     trustBadges: ["Barbiers certifiés", "Sans rendez-vous possible", "Produits premium"],
@@ -85,6 +94,14 @@ export const NICHES: NicheContent[] = [
     style: "warm", displayFont: "DM Serif Display",
     heroImage: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1920&q=80",
     aboutImage: "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1920&q=80",
+    imagePool: [
+      "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1544025162-d76694265947?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=1920&q=80&auto=format&fit=crop",
+    ],
     icon: "utensils",
     taglineTemplates: ["Une cuisine sincère, des produits du marché", "La table où l'on revient", "Fait maison, du marché à l'assiette"],
     trustBadges: ["Fait maison", "Produits du marché", "Terrasse en saison"],
@@ -135,6 +152,13 @@ export const NICHES: NicheContent[] = [
     style: "bold", displayFont: "Bebas Neue",
     heroImage: "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1920&q=80",
     aboutImage: "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=1920&q=80",
+    imagePool: [
+      "https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1581091226825-a6a2a5aee158?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1607472586893-edb57bdc1974?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1521791136064-7986c2920216?w=1920&q=80&auto=format&fit=crop",
+    ],
     icon: "wrench",
     taglineTemplates: ["Dépannage rapide, devis clair", "Votre urgence, notre métier", "Des tuyaux d'acier, une parole d'homme"],
     trustBadges: ["Interventions rapides", "Devis gratuit", "Artisan certifié"],
@@ -185,6 +209,12 @@ export const NICHES: NicheContent[] = [
     style: "minimal", displayFont: "Syne",
     heroImage: "https://images.unsplash.com/photo-1606811971618-4486d14f3f99?w=1920&q=80",
     aboutImage: "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=1920&q=80",
+    imagePool: [
+      "https://images.unsplash.com/photo-1606811971618-4486d14f3f99?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1588776814546-1ffcf47167f5?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1576091160550-2173dba999ef?w=1920&q=80&auto=format&fit=crop",
+    ],
     icon: "stethoscope",
     taglineTemplates: ["Un sourire sain commence ici", "La dentisterie douce et moderne", "Votre sourire mérite des experts"],
     trustBadges: ["Approche douce", "Équipement dernière génération", "Urgences acceptées"],
@@ -235,6 +265,14 @@ export const NICHES: NicheContent[] = [
     style: "bold", displayFont: "Bebas Neue",
     heroImage: "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1920&q=80",
     aboutImage: "https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1920&q=80",
+    imagePool: [
+      "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1571902943202-507ec2618e8f?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1517836357463-d25dfeac3438?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1540497077202-7c8a3999166f?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=1920&q=80&auto=format&fit=crop",
+    ],
     icon: "dumbbell",
     taglineTemplates: ["Forge ta force, chaque jour", "Ici on ne parle pas, on s'entraîne", "Ton objectif, notre programme"],
     trustBadges: ["Coachs diplômés", "Équipement complet", "Formules flexibles"],
@@ -285,6 +323,13 @@ export const NICHES: NicheContent[] = [
     style: "luxury", displayFont: "Cormorant Garamond",
     heroImage: "https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=1920&q=80",
     aboutImage: "https://images.unsplash.com/photo-1560750588-73207b1ef5b8?w=1920&q=80",
+    imagePool: [
+      "https://images.unsplash.com/photo-1540555700478-4be289fbecef?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1560750588-73207b1ef5b8?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1544161515-4ab6ce71db47?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?w=1920&q=80&auto=format&fit=crop",
+      "https://images.unsplash.com/photo-1600334129128-685c5582fd35?w=1920&q=80&auto=format&fit=crop",
+    ],
     icon: "flower-2",
     taglineTemplates: ["Le bien-être, élevé en art", "Un parenthèse rien qu'à vous", "L'évasion commence à la porte"],
     trustBadges: ["Produits naturels", "Esthéticiennes diplômées", "Cabine duo disponible"],
@@ -337,6 +382,13 @@ export const DEFAULT_NICHE: NicheContent = {
   style: "minimal", displayFont: "Syne",
   heroImage: "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80",
   aboutImage: "https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1920&q=80",
+  imagePool: [
+    "https://images.unsplash.com/photo-1497366216548-37526070297c?w=1920&q=80&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1521737711867-e3b97375f902?w=1920&q=80&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1920&q=80&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1552664730-d307ca884978?w=1920&q=80&auto=format&fit=crop",
+    "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=1920&q=80&auto=format&fit=crop",
+  ],
   icon: "store",
   taglineTemplates: ["Un service de qualité, près de chez vous", "L'expertise locale à votre service"],
   trustBadges: ["Devis gratuit", "Équipe expérimentée", "Satisfaction client"],
