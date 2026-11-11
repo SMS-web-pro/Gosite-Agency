@@ -7,13 +7,16 @@ import { hashSeed, rotateSeeded } from "./images";
 export type ImageCandidate = { url: string; title: string; width: number; height: number };
 
 /** Filtre les candidats bruts Serper : http(s), pas de SVG, >=600x400,
- *  dédoublonnés par host (un seul site par image, pas de collage visuel). */
+ *  aucun caractère dangereux pour un attribut HTML/URL (guillemets, chevrons,
+ *  espaces, backslash) — ces URLs finissent dans <img src> et des prompts.
+ *  Dédoublonnés par host (un seul site par image, pas de collage visuel). */
 export function filterImageCandidates(raw: Record<string, unknown>[]): ImageCandidate[] {
   const seenHosts = new Set<string>();
   const out: ImageCandidate[] = [];
   for (const r of raw) {
     const url = typeof r.imageUrl === "string" ? r.imageUrl.trim() : "";
     if (!/^https?:\/\//.test(url)) continue;
+    if (/[\s"'`<>\\]/.test(url)) continue;
     if (/\.svg(\?|$)/i.test(url)) continue;
     const width = Number(r.imageWidth ?? 0) || 0;
     const height = Number(r.imageHeight ?? 0) || 0;
@@ -38,7 +41,8 @@ export function seededSubset(valid: ImageCandidate[], seed: string, count: numbe
   return rotateSeeded(valid, hashSeed(seed)).slice(0, Math.max(0, count));
 }
 
-/** HEAD en parallèle (paquets de 6) : garde status 200 + content-type image/*. */
+/** HEAD en parallèle (paquets de 6) : garde status 200 + content-type image/*
+ *  + taille réelle > 20 Ko (la vraie photo, pas la vignette). */
 export async function validateHeads(urls: string[], timeoutMs = 8000): Promise<string[]> {
   const keep: string[] = [];
   for (let i = 0; i < urls.length; i += 6) {
@@ -52,7 +56,9 @@ export async function validateHeads(urls: string[], timeoutMs = 8000): Promise<s
             headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
           });
           const ct = res.headers.get("content-type") ?? "";
-          return res.status === 200 && ct.startsWith("image/") ? u : null;
+          if (res.status !== 200 || !ct.startsWith("image/")) return null;
+          const len = Number(res.headers.get("content-length") ?? 0) || 0;
+          return len > 0 && len < 20_000 ? null : u;
         } catch {
           return null;
         }

@@ -297,19 +297,21 @@ export async function verifyProspectEmail(p: Prospect) {
 export async function mapProspect(p: Prospect) {
   await markAgentRunStart("mapper");
   const sheet = buildClientSheet(p);
-  // v5 — données réelles AVANT l'IA : description Google Maps + horaires via
-  // Serper /maps, images sectorielles validées via /images, services de repli.
-  // Jamais bloquant (échec réseau/quota → pool + services de niche).
-  await enrichSheetFromRealData(p, sheet);
 
-  // Validation gratuite AVANT tout appel LLM : une fiche incomplète est un
-  // problème de données (téléphone absent…), payer l'IA ne la remplira pas.
+  // Validation gratuite AVANT tout appel réseau/LLM : une fiche incomplète est
+  // un problème de données (téléphone absent…), payer Serper ou l'IA ne la
+  // remplira pas — et l'autopilot rejouerait la map en re-brûlant des crédits.
   const validation = validateSheet(sheet);
   if (!validation.ok) {
     await markAgentRunEnd("mapper", false, `Champs manquants: ${validation.missing.join(",")}`);
     await logActivity({ agentKey: "mapper", action: "fiche_incomplete", message: `${p.businessName} : fiche incomplète (${validation.missing.join(", ")})`, level: "error", prospectId: p.id });
     throw new Error("Fiche client incomplète");
   }
+
+  // v5 — données réelles AVANT l'IA : description Google Maps + horaires via
+  // Serper /maps, images sectorielles validées via /images, services de repli.
+  // Jamais bloquant (échec réseau/quota → pool + services de niche).
+  await enrichSheetFromRealData(p, sheet);
 
   // 🧠 Mapper enrichit la fiche : accroche, description et angle éditorial sur-mesure
   // — DANS LA LANGUE DU LEAD (site US → anglais), propagée au Coder via clientData.
@@ -349,9 +351,10 @@ export async function mapProspect(p: Prospect) {
   if (enriched.description) sheet.DESCRIPTION = enriched.description;
   if (enriched.style) sheet.STYLE = enriched.style;
   if (enriched.angle) sheet.SELLING_ANGLE = enriched.angle;
-  // Services réels : uniquement si le LLM a dérivé au moins 3 services propres
-  // de la description — sinon le repli niche déjà posé reste en place.
-  if ((enriched.services ?? []).length >= 3) {
+  // Services réels : uniquement si le LLM a dérivé au moins 5 services propres
+  // de la description (le Coder rend 5 à 6 cartes) — sinon le repli niche
+  // (6 services) déjà posé reste en place.
+  if ((enriched.services ?? []).length >= 5) {
     sheet.SERVICES = JSON.stringify(enriched.services);
   }
 
@@ -359,7 +362,7 @@ export async function mapProspect(p: Prospect) {
   await markAgentRunEnd("mapper", true);
   await logActivity({
     agentKey: "mapper", action: "fiche_validee",
-    message: `Fiche client remplie et validée : 28 champs · palette ${sheet.PRIMARY_COLOR}/${sheet.ACCENT_COLOR} · ${sheet.SCHEMA_TYPE} · ${sheet.LOCALE}.`,
+    message: `Fiche client remplie et validée : 32 champs · palette ${sheet.PRIMARY_COLOR}/${sheet.ACCENT_COLOR} · ${sheet.SCHEMA_TYPE} · ${sheet.LOCALE}.`,
     level: "success", prospectId: p.id,
   });
   return sheet;

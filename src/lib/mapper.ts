@@ -126,6 +126,9 @@ function nicheServicesJson(niche: ReturnType<typeof findNiche>, isEn: boolean): 
  * tests/_lib (pur).
  */
 export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string, string>): Promise<void> {
+  // Idempotence : une fiche déjà enrichie (retry du pipeline, crash après
+  // persistance) ne re-brûle pas 2 crédits Serper pour le même résultat.
+  if (sheet.IMAGE_SOURCE === "serper") return;
   try {
     const niche = findNiche(p.businessType);
     const isEn = (sheet.LANG || "fr").startsWith("en");
@@ -178,11 +181,23 @@ export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string,
       sheet.GALLERY_IMAGE_URLS = gallery.join("|");
       sheet.IMAGE_SOURCE = "serper";
     }
-  } catch {
+  } catch (err) {
     // Aucun enrichissement ne doit casser le mapping : le pool garde la main.
     if (!sheet.SERVICES) {
       const niche = findNiche(p.businessType);
       sheet.SERVICES = nicheServicesJson(niche, (sheet.LANG || "fr").startsWith("en"));
+    }
+    // Traçabilité : un enrichissement silencieusement no-op (blip DB, module
+    // absent) doit rester distinguishable d'un Serper à sec.
+    try {
+      const { logActivity } = await import("./activity");
+      await logActivity({
+        agentKey: "mapper", action: "enrichissement_echec",
+        message: `${p.businessName} : enrichissement Serper ignoré (${err instanceof Error ? err.message.slice(0, 120) : "erreur inconnue"}) — pool et services de niche conservés.`,
+        level: "warn", prospectId: p.id,
+      });
+    } catch {
+      // Journalisation impossible : on ne casse jamais le mapping pour un log.
     }
   }
 }

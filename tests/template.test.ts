@@ -35,4 +35,12 @@ check("B. horaires réels affichés", withData.includes("Lun-Sam 6h-19h"));
 check("B. pays US dans JSON-LD", withData.includes('"addressCountry":"US"'));
 check("B. pas de 'vérifiés'", !withData.includes("avis vérifiés"));
 
+// C. v5 — onerror : substitution de fallback, jamais display:none / remove()
+const GALLERY = "https://images.unsplash.com/g1|https://images.unsplash.com/g2";
+const FALLBACK = "https://images.unsplash.com/fallback-hero";
+const v5 = generateSiteHtml({ ...base, GALLERY_IMAGE_URLS: GALLERY, IMAGE_FALLBACK_URL: FALLBACK, ABOUT_IMAGE_URL: "https://cdn.example.com/about.jpg" });
+check("C. onerror fallback substitué (héros)", v5.includes(`onerror="this.onerror=null;this.src='${FALLBACK}'"`));
+check("C. aucun this.remove() dans les onerror", !v5.includes('onerror="this.remove()"'));
+check("C. aucun display='none' dans les onerror", !v5.includes('onerror="this.style.display'));
+
 process.exit(fail ? 1 : 0);

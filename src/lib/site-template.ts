@@ -543,7 +543,7 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 
 <section id="hero">
   <div class="hero-bg">
-    <img src="${d.HERO_IMAGE_URL}" alt="${name} — ${esc(nicheLabel)} ${lang === "en" ? "in" : "à"} ${city}" loading="eager" fetchpriority="high" onerror="this.onerror=null;this.src='${fallbackImg}'">
+    <img src="${esc(d.HERO_IMAGE_URL)}" alt="${name} — ${esc(nicheLabel)} ${lang === "en" ? "in" : "à"} ${city}" loading="eager" fetchpriority="high" onerror="this.onerror=null;this.src='${fallbackImg}'">
     <div class="hero-overlay"></div>
     <div class="hero-pattern"></div>
   </div>
@@ -577,7 +577,7 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
     <div class="about-grid">
       <div class="about-visual" data-aos="fade-right">
         <div class="about-image-frame">
-          <img src="${d.ABOUT_IMAGE_URL}" alt="${T.teamAtWork(name)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackImg}'">
+          <img src="${esc(d.ABOUT_IMAGE_URL)}" alt="${T.teamAtWork(name)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackImg}'">
           ${hasReviews ? `<div class="about-badge-float"><div class="badge-number">${d.GOOGLE_RATING}</div><div class="badge-text">${T.googleRating}<br>${T.acrossReviews(d.REVIEW_COUNT)}</div></div>` : ""}
         </div>
         <div class="about-accent-block"><i data-lucide="${niche.icon}"></i><span>${T.inCity(city, nicheLabel.toLowerCase())}</span></div>
