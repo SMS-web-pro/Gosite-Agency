@@ -77,6 +77,15 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
     HERO_IMAGE_URL: imgs.hero,
     ABOUT_IMAGE_URL: imgs.about,
     GALLERY_IMAGE_URLS: imgs.gallery.join("|"),
+    // Bouton flottant WhatsApp : lien wa.me avec message prérempli dans la
+    // langue du site. Vide si aucun téléphone (le Coder supprime le bouton).
+    WHATSAPP_URL: phoneDigits
+      ? `https://wa.me/${phoneDigits}?text=${encodeURIComponent(
+          loc.lang.startsWith("en")
+            ? `Hello ${name}, I'd like to get more information.`
+            : `Bonjour ${name}, je souhaite obtenir plus d'informations.`,
+        )}`
+      : "",
     NICHE_LABEL: niche.label,
     NICHE_ICON: niche.icon,
   };
