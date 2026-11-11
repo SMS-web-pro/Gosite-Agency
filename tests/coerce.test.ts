@@ -20,6 +20,20 @@ check("style invalide rejeté", !("style" in (coerceEnrich({ style: "futuriste" 
 check("tagline vide rejeté", !("tagline" in (coerceEnrich({ tagline: "   " }) ?? {})));
 check("raw null -> {}", JSON.stringify(coerceEnrich(null)) === "{}");
 
+// Services v5 : coercition des services dérivés de la description réelle
+const es = coerceEnrich({ services: [
+  { title: " Deep Clean ", desc: "Full-home clean with real checklists." },
+  { title: 42, desc: "no" },
+  { title: "Move Out", desc: "" },
+  { title: "Office Cleaning", desc: "Nightly service for offices of any size." },
+  { title: "Pet Hair Removal", desc: "Special tools for homes with pets." },
+]});
+check("services valables gardés (3)", (es?.services ?? []).length === 3);
+check("services titre tronqué/nettoyé", es?.services?.[0]?.title === "Deep Clean");
+check("services desc max 160", (es?.services ?? []).every((s) => s.desc.length <= 160));
+check("services absents -> undefined", !("services" in (coerceEnrich({}) ?? {})));
+check("services non-array -> undefined", !("services" in (coerceEnrich({ services: "x" }) ?? {})));
+
 check("mélange -> strings", JSON.stringify(coerceStringArray(["a", 42, "b"])) === '["a","b"]');
 check("string -> []", JSON.stringify(coerceStringArray("abc")) === "[]");
 check("null -> []", JSON.stringify(coerceStringArray(null)) === "[]");

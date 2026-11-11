@@ -8,7 +8,7 @@ import { logActivity } from "./activity";
 import { ensureAgentsSeeded, markAgentRunEnd, markAgentRunStart } from "./agents";
 import { scoutSearch, provisionReplacementKey } from "./serper";
 import { verifyEmail } from "./email-verify";
-import { buildClientSheet, validateSheet } from "./mapper";
+import { buildClientSheet, enrichSheetFromRealData, validateSheet } from "./mapper";
 import { buildSite } from "./coder";
 import { deployToVercel, linkDomain, slugifyId } from "./deploy";
 import { sendSalesEmail } from "./emailer";
@@ -297,6 +297,10 @@ export async function verifyProspectEmail(p: Prospect) {
 export async function mapProspect(p: Prospect) {
   await markAgentRunStart("mapper");
   const sheet = buildClientSheet(p);
+  // v5 — données réelles AVANT l'IA : description Google Maps + horaires via
+  // Serper /maps, images sectorielles validées via /images, services de repli.
+  // Jamais bloquant (échec réseau/quota → pool + services de niche).
+  await enrichSheetFromRealData(p, sheet);
 
   // Validation gratuite AVANT tout appel LLM : une fiche incomplète est un
   // problème de données (téléphone absent…), payer l'IA ne la remplira pas.
@@ -314,7 +318,7 @@ export async function mapProspect(p: Prospect) {
   const { agentThinkJson } = await import("./agent-brain");
   const { coerceEnrich } = await import("./llm-coerce");
   const enriched = coerceEnrich(
-    await agentThinkJson<{ tagline: string; description: string; style: string; angle: string }>({
+    await agentThinkJson<{ tagline: string; description: string; style: string; angle: string; services?: { title: string; desc: string }[] }>({
       agent: "mapper",
       task: "enrichissement_fiche",
       lang: leadLang,
@@ -330,9 +334,12 @@ export async function mapProspect(p: Prospect) {
         (leadLang === "en"
           ? "angle: in one sentence, the main selling point to highlight. "
           : "angle : en une phrase, l'argument de vente principal à mettre en avant. ") +
-        'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string}',
-      input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}, ${p.country}\nAdresse: ${p.address}\nNote Google: ${p.rating}/5 avec ${p.reviewCount} avis\nAnalyse du Validator: ${p.aiInsight ?? "—"}`,
-      maxTokens: 2500,
+        (leadLang === "en"
+          ? 'services: array of 5-6 {"title": short service name, "desc": one concrete benefit sentence} DERIVED from the real Google description and the trade — reuse its exact terms, never invent numbers or promises. '
+          : 'services : tableau de 5-6 {"title": nom court du service, "desc": une phrase de bénéfice concret} DÉRIVÉS de la description Google réelle et du métier — réutilise ses termes exacts, jamais de chiffre ni de promesse inventée. ') +
+        'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string, "services": [{"title": string, "desc": string}]}',
+      input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}, ${p.country}\nAdresse: ${p.address}\nNote Google: ${p.rating}/5 avec ${p.reviewCount} avis\nDescription Google (réelle): ${sheet.ABOUT_SOURCE || "—"}\nAnalyse du Validator: ${p.aiInsight ?? "—"}`,
+      maxTokens: 3000,
       temperature: 0.7,
     }),
   );
@@ -342,6 +349,11 @@ export async function mapProspect(p: Prospect) {
   if (enriched.description) sheet.DESCRIPTION = enriched.description;
   if (enriched.style) sheet.STYLE = enriched.style;
   if (enriched.angle) sheet.SELLING_ANGLE = enriched.angle;
+  // Services réels : uniquement si le LLM a dérivé au moins 3 services propres
+  // de la description — sinon le repli niche déjà posé reste en place.
+  if ((enriched.services ?? []).length >= 3) {
+    sheet.SERVICES = JSON.stringify(enriched.services);
+  }
 
   await db.update(prospects).set({ clientData: sheet, tagline: sheet.TAGLINE, description: sheet.DESCRIPTION, stage: "mapped", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("mapper", true);

@@ -109,6 +109,84 @@ function pickSeededImagesSafe(pool: string[], seed: string, count: number, heroF
   return { hero: heroFb, about: aboutFb, gallery: [] as string[] };
 }
 
+/** Services de repli de la niche (variante EN pour les sites anglophones). */
+function nicheServicesJson(niche: ReturnType<typeof findNiche>, isEn: boolean): string {
+  const list = isEn ? (niche.servicesEn ?? []) : niche.services;
+  return JSON.stringify(list.map(({ title, desc }) => ({ title, desc })));
+}
+
+/**
+ * Enrichissement v5 — données RÉELLES du lead, jamais bloquant :
+ * 1. Serper /maps : description Google + horaires réels (ABOUT_SOURCE, HOURS_*).
+ * 2. Serper /images : recherche sectorielle, URLs validées en HEAD, rotation
+ *    seedée + padding pool → héros, about, galerie (6) + IMAGE_SOURCE="serper".
+ * 3. SERVICES préparés en repli niche — le LLM du Mapper les remplacera si la
+ *    description réelle est exploitable.
+ * Les imports DB/Serper restent dynamiques : ce module est copié tel quel dans
+ * tests/_lib (pur).
+ */
+export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string, string>): Promise<void> {
+  try {
+    const niche = findNiche(p.businessType);
+    const isEn = (sheet.LANG || "fr").startsWith("en");
+    const gl = ((sheet.LOCALE || "fr-FR").split("-")[1] || "fr").toLowerCase();
+    const hl = isEn ? "en" : "fr";
+    const seed = `${p.businessName}|${p.city}`;
+    // Repli par défaut tant que le LLM n'a pas prouvé mieux (ou si Serper est
+    // épuisé/hors ligne).
+    sheet.SERVICES = nicheServicesJson(niche, isEn);
+
+    const serper = await import("./serper");
+    const key = await serper.nextSerperKey();
+    if (!key) return;
+
+    // /maps — 1 crédit : description réelle + horaires
+    const det = await serper.fetchLeadDetails({
+      apiKey: key.apiKey,
+      q: `${p.businessName} ${p.address ?? ""} ${p.city ?? ""}`.trim(),
+      gl,
+      hl,
+    });
+    await serper.countSerperCredit(key.id);
+    if (det.description) sheet.ABOUT_SOURCE = det.description.slice(0, 400);
+    if (det.hours) {
+      if (det.hours.weekday) sheet.HOURS_WEEKDAY = det.hours.weekday;
+      if (det.hours.sat) sheet.HOURS_SAT = det.hours.sat;
+      if (det.hours.sun) sheet.HOURS_SUN = det.hours.sun;
+    }
+
+    // /images — 1 crédit : recherche sectorielle + validation HEAD
+    const { searchValidImages, seededSubset } = await import("./images-search");
+    const found = await searchValidImages({
+      apiKey: key.apiKey,
+      query: `${niche.labelEn} service professional photo`,
+      gl,
+      hl,
+      count: 8,
+    });
+    await serper.countSerperCredit(key.id);
+    if (found.length >= 5) {
+      const sub = seededSubset(found, seed, 8);
+      const gallery = sub.slice(2).map((c) => c.url);
+      const need = Math.max(0, 6 - gallery.length);
+      if (need > 0) {
+        const pad = pickSeededImagesSafe(niche.imagePool, `${seed}|pad`, need, niche.heroImage, niche.aboutImage);
+        gallery.push(...pad.gallery.slice(0, need));
+      }
+      sheet.HERO_IMAGE_URL = sub[0].url;
+      sheet.ABOUT_IMAGE_URL = sub[1]?.url ?? sheet.HERO_IMAGE_URL;
+      sheet.GALLERY_IMAGE_URLS = gallery.join("|");
+      sheet.IMAGE_SOURCE = "serper";
+    }
+  } catch {
+    // Aucun enrichissement ne doit casser le mapping : le pool garde la main.
+    if (!sheet.SERVICES) {
+      const niche = findNiche(p.businessType);
+      sheet.SERVICES = nicheServicesJson(niche, (sheet.LANG || "fr").startsWith("en"));
+    }
+  }
+}
+
 // Required fields of the sheet — Mapper validates they are filled
 export function validateSheet(d: Record<string, string>): { ok: boolean; missing: string[] } {
   const required = [

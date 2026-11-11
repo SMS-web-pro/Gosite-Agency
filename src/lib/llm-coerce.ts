@@ -19,8 +19,10 @@ export function coerceQualify(raw: { score?: unknown; insight?: unknown; verdict
   return { score, insight, verdict };
 }
 
-export function coerceEnrich(raw: { tagline?: unknown; description?: unknown; style?: unknown; angle?: unknown } | null | undefined): Partial<{ tagline: string; description: string; style: string; angle: string }> {
-  const out: Partial<{ tagline: string; description: string; style: string; angle: string }> = {};
+export function coerceEnrich(
+  raw: { tagline?: unknown; description?: unknown; style?: unknown; angle?: unknown; services?: unknown } | null | undefined,
+): Partial<{ tagline: string; description: string; style: string; angle: string; services: { title: string; desc: string }[] }> {
+  const out: Partial<{ tagline: string; description: string; style: string; angle: string; services: { title: string; desc: string }[] }> = {};
   if (!raw || typeof raw !== "object") return out;
   const str = (v: unknown, max: number): string | undefined =>
     typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
@@ -31,6 +33,20 @@ export function coerceEnrich(raw: { tagline?: unknown; description?: unknown; st
   if (typeof raw.style === "string" && (STYLES as readonly string[]).includes(raw.style)) out.style = raw.style;
   const angle = str(raw.angle, 220);
   if (angle) out.angle = angle;
+  // Services : objets {title, desc} tous deux non vides, titres nettoyés,
+  // 6 maximum (le repli niche reste en place si rien de valable).
+  if (Array.isArray(raw.services)) {
+    const services = raw.services
+      .map((s) => {
+        if (!s || typeof s !== "object") return null;
+        const title = str((s as Record<string, unknown>).title, 60);
+        const desc = str((s as Record<string, unknown>).desc, 160);
+        return title && desc ? { title, desc } : null;
+      })
+      .filter((s): s is { title: string; desc: string } => s !== null)
+      .slice(0, 6);
+    if (services.length > 0) out.services = services;
+  }
   return out;
 }
 
