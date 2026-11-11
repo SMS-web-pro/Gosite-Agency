@@ -63,6 +63,13 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
     if (!res.ok || !json.url) {
       return { ok: false, url: "", mode: "vercel", error: json.error?.message ?? `HTTP ${res.status}` };
     }
+    // L'équipe active "Deployment Protection" (all_except_custom_domains) : les
+    // URLs *.vercel.app servent alors la page login SSO au lieu du site. On
+    // lève cette protection pour chaque projet client, best-effort.
+    await fetch(
+      `https://api.vercel.com/v9/projects/${encodeURIComponent(slug)}${teamId ? `?teamId=${encodeURIComponent(teamId)}` : ""}`,
+      { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ ssoProtection: null }), signal: AbortSignal.timeout(15000) },
+    ).catch(() => {});
     return { ok: true, url: `https://${json.url}`, mode: "vercel" };
   } catch (err) {
     return { ok: false, url: "", mode: "vercel", error: err instanceof Error ? err.message : "network" };
