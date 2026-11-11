@@ -78,7 +78,7 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
     const raw = await geminiCompleteStep({
       system: goldenPrompt(lang),
       user: `${user}\n\n${kickoff}`,
-      maxTokens: 16384,
+      maxTokens: 65536,
       temperature: 0.55,
       timeoutMs: 120_000,
       deadlineMs: 250_000,
