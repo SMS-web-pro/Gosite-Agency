@@ -77,6 +77,14 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
     HERO_IMAGE_URL: imgs.hero,
     ABOUT_IMAGE_URL: imgs.about,
     GALLERY_IMAGE_URLS: imgs.gallery.join("|"),
+    // Champs v5 — remplis par enrichSheetFromRealData (Serper + LLM) :
+    // SERVICES = services réels dérivés de la description du lead,
+    // ABOUT_SOURCE = description Google Maps réelle, IMAGE_SOURCE = traçabilité,
+    // IMAGE_FALLBACK_URL = image de substitution si un lien d'image meurt.
+    SERVICES: "",
+    ABOUT_SOURCE: "",
+    IMAGE_SOURCE: "pool",
+    IMAGE_FALLBACK_URL: imgs.hero,
     // Bouton flottant WhatsApp : lien wa.me avec message prérempli dans la
     // langue du site. Vide si aucun téléphone (le Coder supprime le bouton).
     WHATSAPP_URL: phoneDigits
