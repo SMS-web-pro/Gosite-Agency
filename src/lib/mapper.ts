@@ -110,7 +110,7 @@ function pickSeededImagesSafe(pool: string[], seed: string, count: number, heroF
 }
 
 /** Services de repli de la niche (variante EN pour les sites anglophones). */
-function nicheServicesJson(niche: ReturnType<typeof findNiche>, isEn: boolean): string {
+export function nicheServicesJson(niche: ReturnType<typeof findNiche>, isEn: boolean): string {
   const list = isEn ? (niche.servicesEn ?? []) : niche.services;
   return JSON.stringify(list.map(({ title, desc }) => ({ title, desc })));
 }
