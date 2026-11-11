@@ -44,15 +44,18 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
   }
 
   try {
-    const qs = teamId ? `?teamId=${encodeURIComponent(teamId)}` : "";
-    const res = await fetch(`https://api.vercel.com/v13/deployments${qs}`, {
+    // forceNew : évite la déduplication silencieuse d'un déploiement identique ;
+    // outputDirectory "." : indispensable pour un site statique sans build
+    // (sinon Vercel crée un déploiement SANS fichiers qui sert sa page par défaut).
+    const qs = `${teamId ? `teamId=${encodeURIComponent(teamId)}&` : ""}forceNew=1`;
+    const res = await fetch(`https://api.vercel.com/v13/deployments?${qs}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         name: slug,
         target: "production",
         files: [{ file: "index.html", data: Buffer.from(html, "utf8").toString("base64"), encoding: "base64" }],
-        projectSettings: { framework: null },
+        projectSettings: { framework: null, buildCommand: "", installCommand: "", outputDirectory: "." },
       }),
       signal: AbortSignal.timeout(60000),
     });
