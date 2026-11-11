@@ -51,7 +51,7 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
       body: JSON.stringify({
         name: slug,
         target: "production",
-        files: [{ file: "index.html", data: html }],
+        files: [{ file: "index.html", data: Buffer.from(html, "utf8").toString("base64"), encoding: "base64" }],
         projectSettings: { framework: null },
       }),
       signal: AbortSignal.timeout(60000),
