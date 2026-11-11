@@ -57,14 +57,15 @@ export function generateSiteHtml(d: D): string {
       </div>`).join("");
 
   // Galerie : photos réelles fournies (GALLERY_IMAGE_URLS, une par slot) quand
-  // elles existent ; sinon repli sur les dégradés d'origine. L'onerror masque
-  // l'image → le dégradé + l'icône sous-jacents prennent le relais, jamais de
-  // carré cassé.
+  // elles existent ; sinon repli sur les dégradés d'origine. L'onerror remplace
+  // l'image par IMAGE_FALLBACK_URL (v5) — jamais de carré cassé, jamais de
+  // photo disparue : la fallback prend le relais.
+  const fallbackImg = esc(d.IMAGE_FALLBACK_URL || d.HERO_IMAGE_URL || d.ABOUT_IMAGE_URL || "");
   const galleryUrls = (d.GALLERY_IMAGE_URLS || "").split("|").map((s) => s.trim()).filter(Boolean);
   const galleryHtml = niche.gallery.map((g, i) => {
     const c = i % 3 === 0 ? primary : i % 3 === 1 ? accent : shade(primary, 25);
     const photo = galleryUrls[i];
-    const img = photo ? `<img class="gallery-photo" src="${esc(photo)}" alt="${esc(name)} — ${esc(g.title)}" loading="lazy" decoding="async" onerror="this.remove()">` : "";
+    const img = photo ? `<img class="gallery-photo" src="${esc(photo)}" alt="${esc(name)} — ${esc(g.title)}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${fallbackImg}'">` : "";
     return `
       <div class="gallery-item" data-aos="fade-up" data-aos-delay="${(i % 3) * 80}">
         <div class="gallery-placeholder has-photo" style="--card-accent:${c}">
@@ -542,7 +543,7 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 
 <section id="hero">
   <div class="hero-bg">
-    <img src="${d.HERO_IMAGE_URL}" alt="${name} — ${esc(nicheLabel)} ${lang === "en" ? "in" : "à"} ${city}" loading="eager" fetchpriority="high">
+    <img src="${d.HERO_IMAGE_URL}" alt="${name} — ${esc(nicheLabel)} ${lang === "en" ? "in" : "à"} ${city}" loading="eager" fetchpriority="high" onerror="this.onerror=null;this.src='${fallbackImg}'">
     <div class="hero-overlay"></div>
     <div class="hero-pattern"></div>
   </div>
@@ -576,7 +577,7 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
     <div class="about-grid">
       <div class="about-visual" data-aos="fade-right">
         <div class="about-image-frame">
-          <img src="${d.ABOUT_IMAGE_URL}" alt="${T.teamAtWork(name)}" loading="lazy">
+          <img src="${d.ABOUT_IMAGE_URL}" alt="${T.teamAtWork(name)}" loading="lazy" onerror="this.onerror=null;this.src='${fallbackImg}'">
           ${hasReviews ? `<div class="about-badge-float"><div class="badge-number">${d.GOOGLE_RATING}</div><div class="badge-text">${T.googleRating}<br>${T.acrossReviews(d.REVIEW_COUNT)}</div></div>` : ""}
         </div>
         <div class="about-accent-block"><i data-lucide="${niche.icon}"></i><span>${T.inCity(city, nicheLabel.toLowerCase())}</span></div>
