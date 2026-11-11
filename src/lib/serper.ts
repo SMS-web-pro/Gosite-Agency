@@ -142,6 +142,72 @@ async function planQueries(niche: string, city: string, wanted: number, isMA: bo
   return { queries: heuristics, reasoning: "" };
 }
 
+/* ───────────── Comptes & requêtes réutilisables (Mapper v5) ───────────── */
+
+/** Clé active suivante (rotation) — null si le parc est épuisé. */
+export async function nextSerperKey(): Promise<SerperKey | null> {
+  return getActiveRealKey();
+}
+
+/** Compte 1 crédit sur la clé et marque l'épuisement le cas échéant. */
+export async function countSerperCredit(keyId: number): Promise<void> {
+  const rows = await db.select().from(serperKeys).where(eq(serperKeys.id, keyId)).limit(1);
+  const key = rows[0];
+  if (!key) return;
+  const used = key.creditsUsed + 1;
+  await db.update(serperKeys).set({ creditsUsed: used, lastUsedAt: new Date() }).where(eq(serperKeys.id, keyId));
+  if (used >= key.creditLimit) {
+    await markExhausted(keyId);
+    await notifyTelegram(`⚠️ <b>Prospector</b> — ${key.label} a atteint ${key.creditLimit} requêtes. Rotation sur le compte suivant.`);
+  }
+}
+
+/** POST générique sur un endpoint Serper — null si !ok ou réseau down (jamais throw). */
+export async function serperPost(
+  path: "images" | "maps",
+  body: Record<string, unknown>,
+  apiKey: string,
+  timeoutMs = 15000,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const res = await fetch(`https://google.serper.dev/${path}`, {
+      method: "POST",
+      headers: { "X-API-KEY": apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/** Fiche Google Maps réelle : description + horaires (au mieux — null si absent). */
+export async function fetchLeadDetails(opts: {
+  apiKey: string;
+  q: string;
+  gl: string;
+  hl: string;
+}): Promise<{ description: string; hours: Record<string, string> | null }> {
+  const j = await serperPost("maps", { q: opts.q, gl: opts.gl, hl: opts.hl }, opts.apiKey);
+  const place = (j?.places as Record<string, unknown>[] | undefined)?.[0];
+  const description = typeof place?.description === "string" ? place.description.trim() : "";
+  let hours: Record<string, string> | null = null;
+  const oh = place?.openingHours;
+  if (Array.isArray(oh) && oh.length > 0) {
+    const line = (pred: (l: string) => boolean): string =>
+      oh.filter((h): h is string => typeof h === "string" && pred(h.toLowerCase()))
+        .slice(0, 1)
+        .join(" · ");
+    const weekday = line((l) => /^(lun|mar|mer|jeu|ven|mon|tue|wed|thu|fri)/.test(l));
+    const sat = line((l) => /^(sam|sab|sat)/.test(l));
+    const sun = line((l) => /^(dim|dom|sun)/.test(l));
+    if (weekday || sat || sun) hours = { weekday, sat, sun };
+  }
+  return { description, hours };
+}
+
 /* ───────────── Gestion des comptes et rotation ───────────── */
 
 async function getActiveRealKey(): Promise<SerperKey | null> {
