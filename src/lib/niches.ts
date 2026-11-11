@@ -24,6 +24,10 @@ export type NicheContent = {
   gallery: { icon: string; title: string; desc: string; tag: string }[];
   process: { title: string; desc: string }[];
   faq: { q: string; a: string }[];
+  /** Variantes anglaises (sites US/UK) — repli quand la description du lead
+   *  est trop pauvre pour générer des services personnalisés. */
+  servicesEn?: { icon: string; title: string; desc: string }[];
+  faqEn?: { q: string; a: string }[];
   guarantees: { icon: string; title: string; desc: string }[];
   testimonialServices: string[];
 };
@@ -84,6 +88,22 @@ export const NICHES: NicheContent[] = [
       { icon: "award", title: "Barbiers certifiés", desc: "Chaque membre de l'équipe a au minimum 5 ans de salon." },
     ],
     testimonialServices: ["dégradé", "taille de barbe", "rasage traditionnel", "coupe signature"],
+    servicesEn: [
+      { icon: "scissors", title: "Signature Cut", desc: "Custom cut after a full head-shape and texture diagnosis. Styling and maintenance tips included — done in 45 minutes." },
+      { icon: "sparkles", title: "Precision Fade", desc: "Skin fade or tapered blend executed with clippers and shears, with crisp edges that hold for 3 weeks." },
+      { icon: "feather", title: "Beard Sculpting", desc: "Straight-razor beard shaping, hot towel finish and conditioning oil for a clean line and soothed skin." },
+      { icon: "droplets", title: "Traditional Shave", desc: "Old-school straight-razor shave, double pass with a restorative balm. The full ritual in 30 minutes." },
+      { icon: "palette", title: "Gray Blending", desc: "Discreet gray camouflage or full color with ammonia-free products for an instantly natural look." },
+      { icon: "baby", title: "Kids Cuts", desc: "A patient, playful approach for kids under 12 — careful finish, zero stress." },
+    ],
+    faqEn: [
+      { q: "Do I need an appointment?", a: "The shop works both ways. Booked slots get priority, but walk-in chairs are kept open every day." },
+      { q: "How long does a cut + beard take?", a: "Plan 60 to 75 minutes for the signature cut and beard combo. A cut alone takes about 45 minutes." },
+      { q: "What payment methods do you accept?", a: "Cash and all major cards are accepted at the counter, plus contactless and mobile payment." },
+      { q: "Do you fade curly or coily hair?", a: "Yes — the barbers work with curly and coily textures every day, using clipper-over-comb techniques and scissor finishes." },
+      { q: "Do you sell products?", a: "A curated line of clays, beard oils and shampoos — all tested by our barbers — is available at the front, with usage tips included." },
+      { q: "How often should I refresh a fade?", a: "A fade stays sharp for about 2 to 3 weeks. A quick edge-up extends the cut without starting over." },
+    ],
   },
   {
     match: ["restaurant", "resto", "pizzeria", "brasserie", "bistrot", "traiteur"],
@@ -142,6 +162,22 @@ export const NICHES: NicheContent[] = [
       { icon: "smile", title: "Flexibilité carte", desc: "Allergies ou régime particulier ? La cuisine s'adapte, signalez-le simplement." },
     ],
     testimonialServices: ["grillade au feu de bois", "plat du marché", "dessert maison", "repas de groupe"],
+    servicesEn: [
+      { icon: "utensils", title: "Market-Driven Kitchen", desc: "A short menu that follows the morning's produce: every dish starts with something fresh picked that same day." },
+      { icon: "flame", title: "Wood-Fired Grill", desc: "Aged meats cooked over live embers for a genuine smoky flavor, seared to the minute in front of the room." },
+      { icon: "leaf", title: "Vegetarian Plates", desc: "Vegetable plates built as full dishes in their own right — not sides dressed up." },
+      { icon: "cake-slice", title: "House-Made Desserts", desc: "Pastries prepared every morning by our chef: seasonal tarts, creams and treats." },
+      { icon: "wine", title: "Cellar Selection", desc: "Wines from independent growers bought direct, with a pairing suggested for every signature plate." },
+      { icon: "users", title: "Private Events & Groups", desc: "A private room for up to 20 guests — business dinners and family events with a custom menu." },
+    ],
+    faqEn: [
+      { q: "Do I need a reservation?", a: "Reservations are recommended on weekends and required for groups. On weekdays, walk-in tables are always kept available." },
+      { q: "Do you have vegetarian or gluten-free options?", a: "Yes — several vegetarian dishes are on the menu permanently, and most plates can be adapted gluten-free on request." },
+      { q: "Can I book the restaurant for a private event?", a: "Our private room seats up to 20 guests. Call us to arrange a group menu and a date." },
+      { q: "Is there outdoor seating?", a: "The patio opens on warm days, shaded in summer. Patio tables are first come, first served — no reservations." },
+      { q: "What payment methods do you accept?", a: "All major cards and contactless payment are accepted at the table." },
+      { q: "Do you offer takeout?", a: "The full menu is available to go. Call ahead and your order is ready in about 20 minutes." },
+    ],
   },
   {
     match: ["plombier", "plumber", "plomberie", "chauffage", "hvac"],
@@ -199,6 +235,22 @@ export const NICHES: NicheContent[] = [
       { icon: "badge-check", title: "Artisan certifié", desc: "Assurance professionnelle et certifications à jour, justificatifs sur demande." },
     ],
     testimonialServices: ["fuite d'eau urgente", "remplacement de chauffe-eau", "débouchage", "rénovation de douche"],
+    servicesEn: [
+      { icon: "siren", title: "Emergency Leak Repair", desc: "Thermal-camera leak detection and same-day repair. Emergency service available 7 days a week." },
+      { icon: "pipette", title: "Drain & Sewer Cleaning", desc: "Electric auger and high-pressure hydro jetting to clear stubborn clogs without damaging your pipes." },
+      { icon: "flame", title: "Water Heater Service", desc: "Electric and gas water heater installation and repair. Full replacement the same day on total failure." },
+      { icon: "bath", title: "Bathroom Remodeling", desc: "From fixtures to a complete walk-in shower: plumbing, tile and waterproofing by a licensed pro." },
+      { icon: "gauge", title: "Leak Detection", desc: "Non-destructive detection with tracer gas and borescope: we find the leak without opening walls." },
+      { icon: "thermometer-sun", title: "Annual Boiler Tune-Up", desc: "Complete yearly service with cleaning, combustion adjustment and the report your home insurance wants." },
+    ],
+    faqEn: [
+      { q: "Do you really handle emergencies?", a: "Yes — 7 days a week, holidays included. Active leaks and water heater failures are prioritized and handled as fast as we can arrive." },
+      { q: "Is there a service call fee?", a: "The trip and diagnosis are charged at a flat rate announced on the phone. If you approve the repair quote, it's usually credited back." },
+      { q: "Is the estimate free?", a: "Yes. Estimates are free with no obligation — given on site, or from photos for small jobs." },
+      { q: "Repair or replace my water heater?", a: "We repair as long as it's viable. If the tank is leaking or the unit is 12+ years old, same-day replacement is usually the smart move." },
+      { q: "Do you stand behind your work?", a: "Warranty terms for each job are written on your estimate in plain language before any work starts." },
+      { q: "Do you handle insurance claims?", a: "Yes — we provide the work report and the photos your water-damage claim needs." },
+    ],
   },
   {
     match: ["dentiste", "dentist", "dentaire", "dental"],
@@ -255,6 +307,22 @@ export const NICHES: NicheContent[] = [
       { icon: "siren", title: "Urgences quotidiennes", desc: "Des créneaux réservés chaque jour pour soulager la douleur sans attendre." },
     ],
     testimonialServices: ["blanchiment", "implant", "détartrage", "urgence dentaire"],
+    servicesEn: [
+      { icon: "scan-line", title: "Exam & Cleaning", desc: "Full check-up with panoramic X-ray, gentle ultrasonic scaling and a clear, itemized treatment plan." },
+      { icon: "sparkles", title: "Teeth Whitening", desc: "Professional brightening with custom trays: up to 6 shades lighter in two sessions." },
+      { icon: "circle-plus", title: "Dental Implants", desc: "Titanium implants with 3D-guided placement for precise positioning and fast healing." },
+      { icon: "baby", title: "Pediatric Dentistry", desc: "Care for kids from age 3: sealants, fluoride and a friendly approach that removes the fear." },
+      { icon: "align-center", title: "Invisible Orthodontics", desc: "Clear aligners for teens and adults, with a 3D simulation of your result before you commit." },
+      { icon: "siren", title: "Emergency Care", desc: "Toothache, abscess, broken tooth: emergency slots are held every day — call as soon as we open." },
+    ],
+    faqEn: [
+      { q: "How do I get seen quickly?", a: "Call as soon as we open for a same-day slot. Emergencies (pain, abscess) are always seen first." },
+      { q: "Does whitening damage enamel?", a: "No — the professional protocol uses controlled concentrations with follow-up. Mild sensitivity for 24-48 hours is possible." },
+      { q: "Are you accepting new patients?", a: "Yes, the practice welcomes new adult and child patients. Your first exam sets up your complete record." },
+      { q: "Do you offer payment plans?", a: "For major treatments (implants, orthodontics), interest-free installments are available. Your quote details everything." },
+      { q: "What about a weekend toothache?", a: "Call the office as soon as it opens: emergency slots are held daily, Saturdays included." },
+      { q: "When should my child first visit?", a: "At age 3 for a playful discovery visit. Preventive care like sealants starts around age 6." },
+    ],
   },
   {
     match: ["gym", "fitness", "salle de sport", "musculation", "crossfit", "sport"],
@@ -313,6 +381,22 @@ export const NICHES: NicheContent[] = [
       { icon: "users", title: "Communauté bienveillante", desc: "Ici on s'encourage, débutants et confirmés partagent les mêmes racks." },
     ],
     testimonialServices: ["coaching personnel", "cours de HIIT", "programme de sèche", "remise en forme"],
+    servicesEn: [
+      { icon: "dumbbell", title: "Guided Strength Training", desc: "Free weights, selectorized machines and full racks. A starter program is included with your membership." },
+      { icon: "zap", title: "Group Classes", desc: "HIIT, spin, boxing-fit and mobility: 30 classes a week run by certified coaches." },
+      { icon: "activity", title: "Personal Training", desc: "Initial assessment, custom programming and monthly check-ins with measurements for trackable progress." },
+      { icon: "salad", title: "Nutrition Plans", desc: "Meal plans matched to your goal (bulk, cut, health) with adjustments at every check-in." },
+      { icon: "heart-pulse", title: "Comeback Conditioning", desc: "A gentle return after injury or a long break: progressive strength and mobility first." },
+      { icon: "users", title: "Small Group Training", desc: "Mini-groups of 6 max: team energy with the attention of private coaching." },
+    ],
+    faqEn: [
+      { q: "Can I try before I join?", a: "Absolutely — stop by and a coach will walk you through every zone and answer your questions. Just let us know you're coming." },
+      { q: "Complete beginner: where do I start?", a: "The starter program included with your membership walks you through every zone with a coach during your first week." },
+      { q: "What are your opening hours?", a: "The gym is open 7 days a week, early morning through late evening. Exact hours are posted online and at the front desk." },
+      { q: "Are coaches on the floor?", a: "Certified coaches are on the floor during peak hours. Personal training is available per session or in packages." },
+      { q: "Is there a contract lock-in?", a: "Several membership options exist at different rhythms. Details and pricing are given at the front desk, fully transparent." },
+      { q: "Is the gym mixed and welcoming for women?", a: "Yes — the floor is mixed, with separate locker rooms and calmer time slots if you prefer to train quietly." },
+    ],
   },
   {
     match: ["spa", "beauté", "beauty", "esthétique", "institut", "hammam", "massage"],
@@ -370,6 +454,22 @@ export const NICHES: NicheContent[] = [
       { icon: "heart", title: "Écoute réelle", desc: "Chaque soin commence par vos besoins du jour, pas par un protocole figé." },
     ],
     testimonialServices: ["massage signature", "rituel hammam", "soin visage", "manucure"],
+    servicesEn: [
+      { icon: "hand", title: "Signature Massage", desc: "Deep oil massage with warm oils, pressure adjusted to your tension. 60 or 90 minutes of total disconnection." },
+      { icon: "flower-2", title: "Precious Facial", desc: "Cleansing, enzymatic exfoliation, mask and sculpting massage: your skin leaves luminous with an instant glow." },
+      { icon: "waves", title: "Hammam Ritual", desc: "Eucalyptus steam, black-soap exfoliation and body wrap: the full purifying ritual in 90 minutes." },
+      { icon: "sparkles", title: "Gentle Waxing", desc: "Hypoallergenic warm wax with a soothing post-wax treatment for smooth skin without irritation." },
+      { icon: "palette", title: "Manicure & Gel Polish", desc: "Complete hand care and a long-wear polish that lasts up to 3 weeks, flawless finish guaranteed." },
+      { icon: "heart", title: "Mom-to-Be Ritual", desc: "Adapted prenatal massage and a gentle facial, designed for pregnancy from the 4th month." },
+    ],
+    faqEn: [
+      { q: "Do I need to book ahead?", a: "Yes — treatments are by appointment only so a room is yours alone. Saturdays fill fast; book early in the week." },
+      { q: "Do you offer treatments for men?", a: "Of course: massages, facials and hammam rituals are mixed and adapted to every skin type." },
+      { q: "Can I gift a treatment?", a: "Gift cards are available for every treatment, valid for 12 months. We wrap them nicely — just call ahead." },
+      { q: "What products do you use?", a: "A natural, hypoallergenic line chosen for efficacy and tolerance. Exact references are shared in the treatment room." },
+      { q: "Is there a room for two people?", a: "Yes — our duo room lets you share a massage or ritual side by side with the person you choose." },
+      { q: "Is the hammam private?", a: "The hammam is booked in 45-minute private slots: you are never mixed with other guests." },
+    ],
   },
 ];
 
@@ -429,6 +529,22 @@ export const DEFAULT_NICHE: NicheContent = {
     { icon: "heart-handshake", title: "Proximité", desc: "Une équipe locale qui connaît le quartier et ses clients." },
   ],
   testimonialServices: ["prestation", "intervention", "devis", "suivi"],
+  servicesEn: [
+    { icon: "star", title: "Signature Service", desc: "Our flagship service, delivered by experienced professionals with pro-grade equipment." },
+    { icon: "zap", title: "Express Response", desc: "Fast handling for urgent requests, with regular updates on progress until the job is done." },
+    { icon: "shield-check", title: "Complete Care Plan", desc: "An all-in offer covering your full need, with follow-up included at no extra cost." },
+    { icon: "users", title: "Personal Consultation", desc: "An expert reviews your situation and recommends the solution that best fits your budget." },
+    { icon: "wrench", title: "Maintenance & Follow-Up", desc: "Regular servicing and check-ups to keep your installations reliable for the long run." },
+    { icon: "sparkles", title: "Premium Finishing", desc: "Obsession with detail to the very end: every job closes with a full quality check." },
+  ],
+  faqEn: [
+    { q: "How do I get a quote?", a: "Call or send a message: the quote is free, detailed and comes with no obligation." },
+    { q: "How fast can you come?", a: "Depending on urgency and workload, we schedule quickly. Emergencies go first." },
+    { q: "Is your work guaranteed?", a: "Warranty terms for each job are written on your quote in plain language before anything starts." },
+    { q: "Do you cover the whole area?", a: "Yes — the entire city and its immediate surroundings, with no hidden travel fees." },
+    { q: "What payment methods do you accept?", a: "Cash and all major cards are accepted. Details are listed on the quote handed over before work." },
+    { q: "Can I reschedule my appointment?", a: "Of course — one quick call moves your slot at no charge, up until the day before." },
+  ],
 };
 
 export function findNiche(businessType: string): NicheContent {
