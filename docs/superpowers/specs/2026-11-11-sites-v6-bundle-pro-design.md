@@ -106,6 +106,13 @@ Déterministe, depuis SiteConfig : `privacy.html` (pratiques réelles : données
 
 Assertions bundle : zéro `src="http` externe (images), tous les anchors internes résolvent (fichiers présents), form action correct, JSON-LD parse, sitemap XML valide, title/meta uniques par page, pas de `display:none` dans onerror, honeypot présent. Puis PSI API sur l'URL déployée → scores reportés. Site de test : lead #1952 redéployé.
 
+## Builder check — arbitrages (résolus)
+
+- **Q1 fallback build partiel** : si Gemini échoue → `bundle.ts` rend un **index déterministe minimal** conforme v6 (anti-goals respectés ; le template v5 `site-template.ts` n'entre JAMAIS dans un bundle). OmniRoute reste dans la chaîne avant ce fallback. Si TOUTES les images du pool échouent au download (2 essais chacune) → héros/galerie en dégradé CSS propre, images absentes listées en TODO. Jamais de hotlink, jamais d'image cassée.
+- **Q2 canonical/domaine** : au build, canonical/OG/sitemap sur le sous-domaine Vercel prédit (`https://{slug}.vercel.app`… le domaine final réellement retourné par deployer). Quand Domainner lie un domaine custom → `linkProspectDomain` déclenche **re-rendu du bundle + redéploiement** (canonical/OG/sitemap à jour pour le SEO client).
+- **Q3 testimonials** : rating réel > 0 → bloc « {rating} ★ sur Google · voir les avis » (valeurs interpolées réelles + lien Maps) ; rating 0/absent → section omise + TODO. Pas de branche « cartes d'avis » (aucune source de données — hook futur).
+- **Q4 PSI** : sans clé, report-only, jamais bloquant, skip gracieux sur 429.
+
 ## Laissé au builder
 
 - Ordre exact des tâches/commits, découpage modules purs vs DB.
