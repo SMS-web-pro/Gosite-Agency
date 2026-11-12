@@ -20,9 +20,9 @@ export function coerceQualify(raw: { score?: unknown; insight?: unknown; verdict
 }
 
 export function coerceEnrich(
-  raw: { tagline?: unknown; description?: unknown; style?: unknown; angle?: unknown; services?: unknown } | null | undefined,
-): Partial<{ tagline: string; description: string; style: string; angle: string; services: { title: string; desc: string }[] }> {
-  const out: Partial<{ tagline: string; description: string; style: string; angle: string; services: { title: string; desc: string }[] }> = {};
+  raw: { tagline?: unknown; description?: unknown; style?: unknown; angle?: unknown; services?: unknown; servicesFull?: unknown } | null | undefined,
+): Partial<{ tagline: string; description: string; style: string; angle: string; services: { title: string; desc: string }[]; servicesFull: { slug: string; title: string; short: string; paras: string[]; bullets: string[] }[] }> {
+  const out: Partial<{ tagline: string; description: string; style: string; angle: string; services: { title: string; desc: string }[]; servicesFull: { slug: string; title: string; short: string; paras: string[]; bullets: string[] }[] }> = {};
   if (!raw || typeof raw !== "object") return out;
   const str = (v: unknown, max: number): string | undefined =>
     typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined;
@@ -46,6 +46,25 @@ export function coerceEnrich(
       .filter((s): s is { title: string; desc: string } => s !== null)
       .slice(0, 6);
     if (services.length > 0) out.services = services;
+  }
+  // ServicesFull : pages /services — slug kebab, short ≤90, paras 2-3 ≤400,
+  // bullets 3-4 ≤120. Un objet sans 2 paras valables est rejeté (page vide
+  // interdite) ; le repli déterministe assemblé dans site-config prend le relais.
+  if (Array.isArray(raw.servicesFull)) {
+    const full = raw.servicesFull
+      .map((s) => {
+        if (!s || typeof s !== "object") return null;
+        const o = s as Record<string, unknown>;
+        const slug = typeof o.slug === "string" && o.slug.trim() ? o.slug.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) : "";
+        const title = str(o.title, 60);
+        const short = str(o.short, 90);
+        const paras = (Array.isArray(o.paras) ? o.paras : []).map((p) => str(p as string, 400)).filter(Boolean).slice(0, 3);
+        const bullets = (Array.isArray(o.bullets) ? o.bullets : []).map((b) => str(b as string, 120)).filter(Boolean).slice(0, 4);
+        return slug && title && short && paras.length >= 2 ? { slug, title, short, paras, bullets } : null;
+      })
+      .filter((s): s is { slug: string; title: string; short: string; paras: string[]; bullets: string[] } => s !== null)
+      .slice(0, 6);
+    if (full.length > 0) out.servicesFull = full;
   }
   return out;
 }

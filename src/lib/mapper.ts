@@ -116,25 +116,24 @@ export function nicheServicesJson(niche: ReturnType<typeof findNiche>, isEn: boo
 }
 
 /**
- * Enrichissement v5 — données RÉELLES du lead, jamais bloquant :
+ * Enrichissement v6 — données RÉELLES du lead, jamais bloquant :
  * 1. Serper /maps : description Google + horaires réels (ABOUT_SOURCE, HOURS_*).
- * 2. Serper /images : recherche sectorielle, URLs validées en HEAD, rotation
- *    seedée + padding pool → héros, about, galerie (6) + IMAGE_SOURCE="serper".
- * 3. SERVICES préparés en repli niche — le LLM du Mapper les remplacera si la
+ * 2. SERVICES préparés en repli niche — le LLM du Mapper les remplace si la
  *    description réelle est exploitable.
+ * Les IMAGES ne passent plus par Serper (photos concurrents bannies) : le
+ * build v6 télécharge le pool Unsplash curé et les embarque localement.
  * Les imports DB/Serper restent dynamiques : ce module est copié tel quel dans
  * tests/_lib (pur).
  */
 export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string, string>): Promise<void> {
   // Idempotence : une fiche déjà enrichie (retry du pipeline, crash après
-  // persistance) ne re-brûle pas 2 crédits Serper pour le même résultat.
-  if (sheet.IMAGE_SOURCE === "serper") return;
+  // persistance) ne re-brûle pas de crédits Serper pour le même résultat.
+  if (sheet.SERVICES_FULL) return;
   try {
     const niche = findNiche(p.businessType);
     const isEn = (sheet.LANG || "fr").startsWith("en");
     const gl = ((sheet.LOCALE || "fr-FR").split("-")[1] || "fr").toLowerCase();
     const hl = isEn ? "en" : "fr";
-    const seed = `${p.businessName}|${p.city}`;
     // Repli par défaut tant que le LLM n'a pas prouvé mieux (ou si Serper est
     // épuisé/hors ligne).
     sheet.SERVICES = nicheServicesJson(niche, isEn);
@@ -143,7 +142,9 @@ export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string,
     const key = await serper.nextSerperKey();
     if (!key) return;
 
-    // /maps — 1 crédit : description réelle + horaires
+    // /maps — 1 crédit : description réelle + horaires. Les IMAGES ne viennent
+    // PLUS de Serper (photos concurrents bannies) : le build v6 télécharge le
+    // pool Unsplash curé et les embarque localement.
     const det = await serper.fetchLeadDetails({
       apiKey: key.apiKey,
       q: `${p.businessName} ${p.address ?? ""} ${p.city ?? ""}`.trim(),
@@ -157,30 +158,6 @@ export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string,
       if (det.hours.sat) sheet.HOURS_SAT = det.hours.sat;
       if (det.hours.sun) sheet.HOURS_SUN = det.hours.sun;
     }
-
-    // /images — 1 crédit : recherche sectorielle + validation HEAD
-    const { searchValidImages, seededSubset } = await import("./images-search");
-    const found = await searchValidImages({
-      apiKey: key.apiKey,
-      query: `${niche.labelEn} service professional photo`,
-      gl,
-      hl,
-      count: 8,
-    });
-    await serper.countSerperCredit(key.id);
-    if (found.length >= 5) {
-      const sub = seededSubset(found, seed, 8);
-      const gallery = sub.slice(2).map((c) => c.url);
-      const need = Math.max(0, 6 - gallery.length);
-      if (need > 0) {
-        const pad = pickSeededImagesSafe(niche.imagePool, `${seed}|pad`, need, niche.heroImage, niche.aboutImage);
-        gallery.push(...pad.gallery.slice(0, need));
-      }
-      sheet.HERO_IMAGE_URL = sub[0].url;
-      sheet.ABOUT_IMAGE_URL = sub[1]?.url ?? sheet.HERO_IMAGE_URL;
-      sheet.GALLERY_IMAGE_URLS = gallery.join("|");
-      sheet.IMAGE_SOURCE = "serper";
-    }
   } catch (err) {
     // Aucun enrichissement ne doit casser le mapping : le pool garde la main.
     if (!sheet.SERVICES) {
@@ -193,7 +170,7 @@ export async function enrichSheetFromRealData(p: Prospect, sheet: Record<string,
       const { logActivity } = await import("./activity");
       await logActivity({
         agentKey: "mapper", action: "enrichissement_echec",
-        message: `${p.businessName} : enrichissement Serper ignoré (${err instanceof Error ? err.message.slice(0, 120) : "erreur inconnue"}) — pool et services de niche conservés.`,
+        message: `${p.businessName} : enrichissement Serper ignoré (${err instanceof Error ? err.message.slice(0, 120) : "erreur inconnue"}) — services de niche conservés.`,
         level: "warn", prospectId: p.id,
       });
     } catch {

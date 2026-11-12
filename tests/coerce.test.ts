@@ -34,6 +34,16 @@ check("services desc max 160", (es?.services ?? []).every((s) => s.desc.length <
 check("services absents -> undefined", !("services" in (coerceEnrich({}) ?? {})));
 check("services non-array -> undefined", !("services" in (coerceEnrich({ services: "x" }) ?? {})));
 
+// servicesFull v6 : pages services (slug/short/paras/bullets)
+const ef = coerceEnrich({ servicesFull: [
+  { slug: "leak-repair", title: "Leak Repair", short: " Fast leak detection ", paras: ["Para one.", "Para two."], bullets: ["Same-day", "Upfront"] },
+  { slug: "drain-cleaning", title: "Drain Cleaning", short: "Clogs cleared.", paras: ["Only one para."], bullets: [] },
+]});
+check("servicesFull valide gardé", (ef?.servicesFull ?? []).length === 1);
+check("servicesFull trims", ef?.servicesFull?.[0]?.short === "Fast leak detection");
+check("servicesFull paras<2 rejeté", (ef?.servicesFull ?? []).length === 1);
+check("servicesFull non-array -> undefined", !("servicesFull" in (coerceEnrich({ servicesFull: "x" }) ?? {})));
+
 check("mélange -> strings", JSON.stringify(coerceStringArray(["a", 42, "b"])) === '["a","b"]');
 check("string -> []", JSON.stringify(coerceStringArray("abc")) === "[]");
 check("null -> []", JSON.stringify(coerceStringArray(null)) === "[]");

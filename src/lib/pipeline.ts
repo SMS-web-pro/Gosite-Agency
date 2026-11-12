@@ -320,7 +320,7 @@ export async function mapProspect(p: Prospect) {
   const { agentThinkJson } = await import("./agent-brain");
   const { coerceEnrich } = await import("./llm-coerce");
   const enriched = coerceEnrich(
-    await agentThinkJson<{ tagline: string; description: string; style: string; angle: string; services?: { title: string; desc: string }[] }>({
+    await agentThinkJson<{ tagline: string; description: string; style: string; angle: string; services?: { title: string; desc: string }[]; servicesFull?: { slug: string; title: string; short: string; paras: string[]; bullets: string[] }[] }>({
       agent: "mapper",
       task: "enrichissement_fiche",
       lang: leadLang,
@@ -339,7 +339,10 @@ export async function mapProspect(p: Prospect) {
         (leadLang === "en"
           ? 'services: array of 5-6 {"title": short service name, "desc": one concrete benefit sentence} DERIVED from the real Google description and the trade — reuse its exact terms, never invent numbers or promises. '
           : 'services : tableau de 5-6 {"title": nom court du service, "desc": une phrase de bénéfice concret} DÉRIVÉS de la description Google réelle et du métier — réutilise ses termes exacts, jamais de chiffre ni de promesse inventée. ') +
-        'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string, "services": [{"title": string, "desc": string}]}',
+        (leadLang === "en"
+          ? 'servicesFull: array of 5-6 {"slug": kebab-case page slug, "title": service name, "short": one-line summary (max 90 chars), "paras": 2-3 CONCRETE paragraphs anchored in the city and reusing the real Google description wording, "bullets": 3-4 concrete benefits} for the /services pages — never invented numbers or promises. '
+          : 'servicesFull : tableau de 5-6 {"slug": slug de page en kebab-case, "title": nom du service, "short": résumé d\'une ligne (90 car max), "paras": 2-3 paragraphes CONCRETS ancrés dans la ville et réutilisant la description Google réelle, "bullets": 3-4 bénéfices concrets} pour les pages /services — jamais de chiffre ni de promesse inventée. ') +
+        'Réponds en JSON : {"tagline": string, "description": string, "style": string, "angle": string, "services": [{"title": string, "desc": string}], "servicesFull": [{"slug": string, "title": string, "short": string, "paras": [string], "bullets": [string]}]}',
       input: `Nom: ${p.businessName}\nType: ${p.businessType}\nVille: ${p.city}, ${p.country}\nAdresse: ${p.address}\nNote Google: ${p.rating}/5 avec ${p.reviewCount} avis\nDescription Google (réelle): ${sheet.ABOUT_SOURCE || "—"}\nAnalyse du Validator: ${p.aiInsight ?? "—"}`,
       maxTokens: 3000,
       temperature: 0.7,
@@ -356,6 +359,11 @@ export async function mapProspect(p: Prospect) {
   // (6 services) déjà posé reste en place.
   if ((enriched.services ?? []).length >= 5) {
     sheet.SERVICES = JSON.stringify(enriched.services);
+  }
+  // Pages /services : 5-6 services avec paras/bullets — sinon le repli
+  // déterministe de site-config prend le relais (pas de page vide).
+  if ((enriched.servicesFull ?? []).length >= 3) {
+    sheet.SERVICES_FULL = JSON.stringify(enriched.servicesFull);
   }
 
   await db.update(prospects).set({ clientData: sheet, tagline: sheet.TAGLINE, description: sheet.DESCRIPTION, stage: "mapped", updatedAt: new Date() }).where(eq(prospects.id, p.id));
