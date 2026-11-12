@@ -58,10 +58,11 @@ const sheet: Record<string, string> = {
   AREAS: "Dallas, Plano, Garland",
 };
 
-// Gemini mock : echo une longue HTML contenant la formAction du prompt
+// Gemini mock : echo une longue HTML contenant la formAction du prompt + les
+// marqueurs obligatoires (validation anti-HTML-incomplet).
 const geminiOk = async (opts: { user: string }) => {
   const formAction = /FORM_ACTION.*?api\/site-form\/(\d+)/.exec(opts.user)?.[1] ?? "0";
-  const page = `<!DOCTYPE html><html><head><title>Mock</title></head><body><p>${"x".repeat(9000)}</p><p>FORM ${formAction}</p></body></html>`;
+  const page = `<!DOCTYPE html><html><head><title>Mock</title></head><body><div class="mobile-bar" data-reveal><a href="https://gosite.digital/api/site-form/${formAction}">form</a></div><p>${"x".repeat(9000)}</p><p>FORM ${formAction}</p></body></html>`;
   return page;
 };
 
@@ -96,6 +97,30 @@ const geminiOk = async (opts: { user: string }) => {
   check("img-down: hero null", !r.bundle["images/hero.jpg"]);
   check("img-down: fallback sans img src externe", !/<img[^>]+src="https?:\/\//.test(r.html));
   check("img-down: TODO contient photo", r.todoList.some((t) => /photo|image/i.test(t)));
+}
+
+// 4. Gemini OK + images KO : le prompt ne propose AUCUN chemin par défaut
+// (sinon Gemini fabriquerait des <img> cassées) — consigne CSS explicite.
+{
+  let prompted = "";
+  const geminiEcho = async (opts: { user: string }) => {
+    prompted = opts.user;
+    return `<!DOCTYPE html><html><head><title>Mock</title></head><body><div class="mobile-bar" data-reveal><a href="api/site-form/1952">f</a></div><pre>${opts.user.replace(/</g, "&lt;")}</pre><p>${"x".repeat(9000)}</p></body></html>`;
+  };
+  const r = await buildSiteBundle(sheet, 1952, geminiEcho as never, (async () => {
+    throw new Error("down");
+  }) as typeof fetch);
+  check("img-down+gemini: engine gemini", r.engine === "gemini");
+  check("img-down+gemini: consigne CSS explicite (hero)", /NO photo downloaded|AUCUNE photo téléchargée/.test(prompted));
+  check("img-down+gemini: consigne CSS explicite (galerie)", /NO photos available|AUCUNE photo disponible/.test(prompted));
+  check("img-down+gemini: aucun chemin image par défaut", !/images\/(hero|about|work-1)\.jpg/.test(prompted));
+}
+
+// 5. Gemini renvoie un HTML sans les marqueurs obligatoires → fallback.
+{
+  const r = await buildSiteBundle(sheet, 1952, (async () =>
+    `<!DOCTYPE html><html><head><title>Mock</title></head><body><p>${"x".repeat(9000)}</p></body></html>`) as never, (async () => new Response(JPEG_15K, { status: 200, headers: { "content-type": "image/jpeg" } })) as typeof fetch);
+  check("markers: html incomplet → fallback", r.engine === "fallback");
 }
 
 process.exit(fail ? 1 : 0);

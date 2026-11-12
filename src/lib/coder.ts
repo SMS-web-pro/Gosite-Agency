@@ -114,14 +114,28 @@ function goldenPrompt(lang: "fr" | "en"): string {
  *  champs absents : buildClientSheet v5 ne les fournit pas encore tous. */
 export function v6SheetLines(sheet: Record<string, string>, lang: "fr" | "en"): string {
   const g = (k: string): string => (sheet[k] ?? "").trim();
-  const paths =
-    g("GALLERY_IMAGE_PATHS") ||
-    "images/work-1.jpg|images/work-2.jpg|images/work-3.jpg|images/work-4.jpg|images/work-5.jpg|images/work-6.jpg";
+  // Jamais de chemin par défaut : si le téléchargement a échoué, on l'indique
+  // explicitement (blocs CSS en dégradé) — sinon Gemini produirait des <img>
+  // cassées vers des fichiers inexistants dans le bundle.
+  const heroLine = g("HERO_IMAGE_PATH")
+    ? lang === "en"
+      ? `Hero image (LOCAL path — use exactly): ${g("HERO_IMAGE_PATH")}. About image: ${g("ABOUT_IMAGE_PATH")}.`
+      : `Image héros (chemin LOCAL — utiliser exactement) : ${g("HERO_IMAGE_PATH")}. Image about : ${g("ABOUT_IMAGE_PATH")}.`
+    : lang === "en"
+      ? "Hero/about images: NO photo downloaded — build the hero and about visuals as pure CSS gradient blocks (NO <img> tag for them)."
+      : "Images héros/about : AUCUNE photo téléchargée — construis le héros et l'about en blocs CSS en dégradé (AUCUNE balise <img> pour eux).";
+  const galleryLine = g("GALLERY_IMAGE_PATHS")
+    ? lang === "en"
+      ? `Gallery images (LOCAL paths, IN ORDER — use exactly these and no others): ${g("GALLERY_IMAGE_PATHS")}.`
+      : `Images de galerie (chemins LOCAUX, DANS L'ORDRE — utiliser exactement ceux-ci et aucun autre) : ${g("GALLERY_IMAGE_PATHS")}.`
+    : lang === "en"
+      ? "Gallery: NO photos available — build the gallery as pure CSS gradient tiles (NO <img> tag at all)."
+      : "Galerie : AUCUNE photo disponible — construis la galerie en tuiles CSS en dégradé (AUCUNE balise <img>).";
   if (lang === "en") {
     return [
       `Display font: ${g("DISPLAY_FONT") || "default"}.`,
-      `Hero image (LOCAL path — use exactly): ${g("HERO_IMAGE_PATH") || "images/hero.jpg"}. About image: ${g("ABOUT_IMAGE_PATH") || "images/about.jpg"}.`,
-      `Gallery images (6 LOCAL paths, IN ORDER): ${paths}.`,
+      heroLine,
+      galleryLine,
       `Form POST endpoint (use EXACTLY as the form action): ${g("FORM_ACTION")}.`,
       `Map link (clean Google Maps URL — never raw coordinates): ${g("MAPS_LINK")}. Iframe embed src if provided: ${g("MAPS_EMBED") || "none — use the link only"}.`,
       `Real services (JSON, 5-6 objects with slug/title/short/paras/bullets — use EXACTLY for the cards, each card links to /services/{slug}): ${g("SERVICES") || "use the sector services from the prompt"}.`,
@@ -131,8 +145,8 @@ export function v6SheetLines(sheet: Record<string, string>, lang: "fr" | "en"): 
   }
   return [
     `Police display : ${g("DISPLAY_FONT") || "défaut"}.`,
-    `Image héros (chemin LOCAL — utiliser exactement) : ${g("HERO_IMAGE_PATH") || "images/hero.jpg"}. Image about : ${g("ABOUT_IMAGE_PATH") || "images/about.jpg"}.`,
-    `Images de galerie (6 chemins LOCAUX, DANS L'ORDRE) : ${paths}.`,
+    heroLine,
+    galleryLine,
     `Endpoint POST du formulaire (utiliser EXACTEMENT comme action) : ${g("FORM_ACTION")}.`,
     `Lien carte (URL Google Maps propre — jamais de coordonnées brutes) : ${g("MAPS_LINK")}. Src d'iframe si fourni : ${g("MAPS_EMBED") || "aucun — lien seulement"}.`,
     `Services réels (JSON, 5-6 objets avec slug/title/short/paras/bullets — utiliser EXACTEMENT pour les cartes, chaque carte lie vers /services/{slug}) : ${g("SERVICES") || "utilise les services sectoriels du prompt"}.`,
@@ -316,7 +330,11 @@ export async function buildSiteBundle(
     });
     if (raw) {
       const extracted = extractHtml(raw);
-      if (extracted && extracted.length > 8000) html = extracted;
+      // Validation marqueurs (le prompt les annonce « rejeté si absent ») :
+      // un HTML incomplet bascule vers le fallback déterministe.
+      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/"].every((m) => extracted.includes(m))) {
+        html = extracted;
+      }
     }
   } catch {
     // Gemini KO → fallback déterministe

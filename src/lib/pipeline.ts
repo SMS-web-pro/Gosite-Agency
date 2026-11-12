@@ -475,6 +475,30 @@ export async function deployProspectSite(p: Prospect) {
     if (domainRes.ok) {
       finalUrl = domainRes.url;
       domainMode = "sous-domaine agence lié";
+      // v6 : canonical/OG/sitemap/JSON-LD doivent pointer le domaine final
+      // réellement retourné par le déployeur → re-rendu + redéploiement
+      // immédiat (non bloquant, même logique que Domainner).
+      if (p.siteBundle) {
+        try {
+          const newBundle = await reRenderBundleForDomain(p, slug, res.url, finalUrl);
+          const redeploy = await deploySiteBundle(slug, newBundle);
+          if (redeploy.ok) {
+            await db.update(prospects).set({ siteBundle: newBundle, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+          } else {
+            await logActivity({
+              agentKey: "deployer", action: "bundle_regenere_echec",
+              message: `Redéploiement du bundle sur le domaine final échoué (${redeploy.error}) — bundle *.vercel.app maintenu, non bloquant.`,
+              level: "warn", prospectId: p.id,
+            });
+          }
+        } catch (err) {
+          await logActivity({
+            agentKey: "deployer", action: "bundle_regenere_echec",
+            message: `Re-rendu du bundle pour le domaine final impossible (${err instanceof Error ? err.message : err}) — non bloquant.`,
+            level: "warn", prospectId: p.id,
+          });
+        }
+      }
     } else {
       domainMode = `Vercel production — sous-domaine agence non lié (${domainRes.error})`;
       await logActivity({
@@ -616,6 +640,32 @@ export async function createPaymentLink(p: Prospect) {
 }
 
 // ─────────────────────────── 9. DOMAINNER ───────────────────────────
+// v6 : le bundle embarque des URLs absolues (canonical, OG, sitemap, JSON-LD).
+// Au changement de domaine : re-rendu des pages auxiliaires + patch de l'index
+// (jamais de fetch du HTML) — partagé par Deployer et Domainner.
+async function reRenderBundleForDomain(
+  p: Prospect,
+  slug: string,
+  oldBase: string,
+  newBase: string
+): Promise<Record<string, string>> {
+  const { buildSiteConfig } = await import("./site-config");
+  const { renderAuxPages, patchIndexDomain } = await import("./bundle");
+  const config = buildSiteConfig({ ...(p.clientData ?? {}), DOMAIN: newBase, SLUG: slug }, p.id);
+  const b = p.siteBundle ?? {};
+  config.images = {
+    hero: b["images/hero.jpg"] ? "images/hero.jpg" : "",
+    about: b["images/about.jpg"] ? "images/about.jpg" : "",
+    gallery: Array.from({ length: 6 }, (_, i) => (b[`images/work-${i + 1}.jpg`] ? `images/work-${i + 1}.jpg` : "")).filter(Boolean),
+  };
+  const imageFiles = Object.fromEntries(Object.entries(b).filter(([k, v]) => k.startsWith("images/") && v));
+  return {
+    "index.html": patchIndexDomain(b["index.html"] ?? "", oldBase, newBase),
+    ...renderAuxPages(config),
+    ...imageFiles,
+  };
+}
+
 export async function linkProspectDomain(p: Prospect, customDomain?: string) {
   await markAgentRunStart("domainner");
   const slug = await decideSlug(p);
@@ -648,28 +698,13 @@ export async function linkProspectDomain(p: Prospect, customDomain?: string) {
     await markAgentRunEnd("domainner", false, res.error);
     throw new Error(res.error);
   }
-  // v6 : le bundle embarque des URLs absolues vers l'ancien domaine (canonical,
-  // OG, sitemap, JSON-LD). Au lien d'un domaine custom : re-rendu des pages
-  // auxiliaires + patch de l'index + redéploiement (jamais de fetch du HTML).
+  // v6 : re-rendu des pages auxiliaires + patch de l'index + redéploiement
+  // (jamais de fetch du HTML).
   if (p.siteBundle && res.mode === "vercel") {
     try {
-      const { buildSiteConfig } = await import("./site-config");
-      const { renderAuxPages, patchIndexDomain } = await import("./bundle");
       const oldBase = `https://${slug}.vercel.app`;
       const newBase = res.url;
-      const config = buildSiteConfig({ ...(p.clientData ?? {}), DOMAIN: newBase, SLUG: slug }, p.id);
-      const b = p.siteBundle;
-      config.images = {
-        hero: b["images/hero.jpg"] ? "images/hero.jpg" : "",
-        about: b["images/about.jpg"] ? "images/about.jpg" : "",
-        gallery: Array.from({ length: 6 }, (_, i) => (b[`images/work-${i + 1}.jpg`] ? `images/work-${i + 1}.jpg` : "")).filter(Boolean),
-      };
-      const imageFiles = Object.fromEntries(Object.entries(b).filter(([k, v]) => k.startsWith("images/") && v));
-      const newBundle: Record<string, string> = {
-        "index.html": patchIndexDomain(b["index.html"] ?? "", oldBase, newBase),
-        ...renderAuxPages(config),
-        ...imageFiles,
-      };
+      const newBundle = await reRenderBundleForDomain(p, slug, oldBase, newBase);
       const redeploy = await deploySiteBundle(slug, newBundle);
       if (redeploy.ok) {
         await db.update(prospects).set({ siteBundle: newBundle, updatedAt: new Date() }).where(eq(prospects.id, p.id));

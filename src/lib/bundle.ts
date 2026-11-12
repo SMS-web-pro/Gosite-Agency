@@ -95,9 +95,7 @@ function pageChrome(config: SiteConfig, path: string, title: string, desc: strin
 <meta property="og:title" content="${esc(title)}">
 <meta property="og:description" content="${esc(desc)}">
 <meta property="og:url" content="${attr(url)}">
-<meta property="og:image" content="${attr(config.domain)}/images/hero.jpg">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="${attr(config.domain)}/images/hero.jpg">
+${config.images.hero ? `<meta property="og:image" content="${attr(config.domain)}/images/hero.jpg">\n<meta name="twitter:card" content="summary_large_image">\n<meta name="twitter:image" content="${attr(config.domain)}/images/hero.jpg">` : `<meta name="twitter:card" content="summary">`}
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="manifest" href="/site.webmanifest">
 <style>:root{--c-primary:${config.primaryColor};--c-accent:${config.accentColor};--c-neutral:${config.neutralBg}}${SHARED_CSS}</style>
@@ -307,8 +305,8 @@ export function renderFallbackIndex(config: SiteConfig): string {
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${attr(config.domain)}/">
-<meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}"><meta property="og:url" content="${attr(config.domain)}/"><meta property="og:image" content="${attr(config.domain)}/images/hero.jpg">
-<meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${attr(config.domain)}/images/hero.jpg">
+<meta property="og:type" content="website"><meta property="og:title" content="${esc(title)}"><meta property="og:description" content="${esc(desc)}"><meta property="og:url" content="${attr(config.domain)}/">${config.images.hero ? `<meta property="og:image" content="${attr(config.domain)}/images/hero.jpg">` : ""}
+<meta name="twitter:card" content="summary_large_image">${config.images.hero ? `<meta name="twitter:image" content="${attr(config.domain)}/images/hero.jpg">` : ""}
 <link rel="icon" type="image/svg+xml" href="/favicon.svg"><link rel="manifest" href="/site.webmanifest">
 <style>:root{--c-primary:${config.primaryColor};--c-accent:${config.accentColor};--c-neutral:${config.neutralBg};--radius-sm:6px;--radius-md:14px;--radius-lg:24px;--radius-pill:999px;--shadow-1:0 2px 8px rgba(10,20,40,.06);--shadow-2:0 8px 24px rgba(10,20,40,.12);--shadow-3:0 16px 48px rgba(10,20,40,.18)}
 ${SHARED_CSS}
@@ -377,7 +375,7 @@ ${SHARED_CSS}
 .c-info a{color:var(--c-accent);font-weight:700}
 .c-map{border-radius:var(--radius-md);overflow:hidden;min-height:200px}
 .c-map iframe{width:100%;height:100%;min-height:200px;border:0}
-.hp{position:absolute;left:-9999px;opacity:0;tabindex:-1}
+.hp{position:absolute;left:-9999px;opacity:0}
 .consent{display:flex;gap:10px;align-items:flex-start;font-size:.85rem;color:#5a6b7d}
 .f-msg{display:none;border-radius:var(--radius-sm);padding:12px 14px;font-size:.9rem}
 .f-ok{display:none;background:#e7f6ec;color:#136c34;border-radius:var(--radius-sm);padding:12px 14px;font-size:.9rem}
@@ -410,8 +408,8 @@ ${topbar}
 <header class="hero">
 ${heroImg}
 <div class="hero-in">
-<span class="hero-tag">${en ? "Top Rated Local Service" : "Service local bien noté"}</span>
-<h1>${esc(config.tagline.split(" ").slice(0, -2).join(" "))} <em>${esc(config.tagline.split(" ").slice(-2).join(" "))}</em></h1>
+<span class="hero-tag">${config.rating !== null ? (en ? "Top Rated Local Service" : "Service local bien noté") : (en ? `Serving ${config.city} & Nearby` : `Au service de ${config.city} et alentours`)}</span>
+<h1>${esc(config.tagline.split(" ").length > 2 ? config.tagline.split(" ").slice(0, -2).join(" ") : config.tagline)} <em>${esc(config.tagline.split(" ").length > 2 ? config.tagline.split(" ").slice(-2).join(" ") : "")}</em></h1>
 <p>${esc(en ? `${config.name} handles ${config.services[0]?.title.toLowerCase() ?? "the job"} and everything around it across ${config.city} — upfront pricing, clean work, no drama.` : `${config.name} assure ${config.services[0]?.title.toLowerCase() ?? "le chantier"} et tout ce qui l'entoure à ${config.city} — prix annoncé, chantier propre, sans stress.`)}</p>
 <div class="hero-cta"><a class="btn btn-accent" href="tel:${attr(config.phoneLink)}">${en ? "Call Now" : "Appeler"} — ${esc(config.phone)}</a><a class="btn btn-ghost" href="#contact" style="border-color:rgba(255,255,255,.4);color:#fff">${en ? "Get a Free Quote" : "Devis gratuit"}</a></div>
 <div class="hero-chips"><span class="chip">${en ? "Upfront Pricing" : "Prix annoncé"}</span><span class="chip">${en ? "Same-Day Service" : "Service rapide"}</span><span class="chip">${en ? "Residential & Commercial" : "Résidentiel & Commercial"}</span></div>
@@ -482,7 +480,8 @@ fetch(form.action,{method:"POST",headers:{"content-type":"application/json"},bod
 }
 
 /** Checklist client dérivée de la config — injectée dans l'email de livraison.
- *  Jamais un fait inventé : chaque item = une donnée manquante à fournir. */export function generateTodoList(config: SiteConfig): string[] {
+ *  Jamais un fait inventé : chaque item = une donnée manquante à fournir. */
+export function generateTodoList(config: SiteConfig): string[] {
   const en = config.lang === "en";
   const todo: string[] = [];
   const photos = 1 + 1 + config.images.gallery.length;

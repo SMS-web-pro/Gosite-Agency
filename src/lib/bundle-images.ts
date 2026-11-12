@@ -29,6 +29,9 @@ async function fetchOne(url: string, fetchImpl: typeof fetch): Promise<Buffer | 
         },
       } as RequestInit);
       if (!res.ok) continue;
+      // Garde : une page HTML 200 de >10 Ko ne doit jamais finir en .jpg.
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (ct && !ct.startsWith("image/")) continue;
       const buf = Buffer.from(await res.arrayBuffer());
       if (buf.length > MIN_BYTES) return buf;
       continue;
@@ -53,7 +56,9 @@ export async function downloadImages(
   let about: string | null = null;
   const gallery: string[] = [];
 
-  // Téléchargements en paquets de 3 (pool = CDN Unsplash : séquentiel serait lent)
+  // Téléchargements en paquets de 3 (pool = CDN Unsplash : séquentiel serait lent).
+  // Une même URL n'est JAMAIS téléchargée 2 fois : la 2e occurrence réutilise
+  // les bytes (réserve du pool = souvent l'héros/le about).
   const jobs: { url: string; kind: "hero" | "about" | "gallery"; idx: number }[] = [];
   if (heroUrl) jobs.push({ url: heroUrl, kind: "hero", idx: 0 });
   if (aboutUrl) jobs.push({ url: aboutUrl, kind: "about", idx: 0 });
