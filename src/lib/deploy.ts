@@ -206,7 +206,22 @@ export async function linkDomain(slug: string, domain: string): Promise<{ ok: bo
     });
     if (!res.ok) {
       const json = await res.json().catch(() => ({}));
-      return { ok: false, url: "", mode: "vercel", error: (json as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}` };
+      const msg = (json as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`;
+      // Le domaine peut déjà être lié à CE projet (re-déploiement) : l'API
+      // Vercel refuse le doublon. On vérifie la liste des domaines du projet ;
+      // s'il est bien présent, c'est un succès (idempotent).
+      if (/already assigned|already exists/i.test(msg)) {
+        const lst = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(slug)}/domains${qs}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(30000),
+        });
+        if (lst.ok) {
+          const lj = (await lst.json().catch(() => ({ domains: [] }))) as { domains?: { name?: string }[] };
+          const present = (lj.domains ?? []).some((d) => d.name?.toLowerCase() === finalDomain.toLowerCase());
+          if (present) return { ok: true, url: `https://${finalDomain}`, mode: "vercel" };
+        }
+      }
+      return { ok: false, url: "", mode: "vercel", error: msg };
     }
     await autoVerifyDomain(finalDomain, slug, token, teamId);
     return { ok: true, url: `https://${finalDomain}`, mode: "vercel" };
