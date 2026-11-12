@@ -522,7 +522,22 @@ export async function contactProspect(p: Prospect) {
   }
   let res: Awaited<ReturnType<typeof sendSalesEmail>>;
   try {
-    res = await sendSalesEmail(p, preview);
+    // v6 : checklist client dérivée du bundle persisté (photos manquantes,
+    // avis, licence…) injectée dans l'email de livraison.
+    let todoList: string[] = [];
+    if (p.siteBundle) {
+      const { buildSiteConfig } = await import("./site-config");
+      const { generateTodoList } = await import("./bundle");
+      const config = buildSiteConfig(p.clientData ?? {}, p.id);
+      const b = p.siteBundle;
+      config.images = {
+        hero: b["images/hero.jpg"] ? "images/hero.jpg" : "",
+        about: b["images/about.jpg"] ? "images/about.jpg" : "",
+        gallery: Array.from({ length: 6 }, (_, i) => (b[`images/work-${i + 1}.jpg`] ? `images/work-${i + 1}.jpg` : "")).filter(Boolean),
+      };
+      todoList = generateTodoList(config);
+    }
+    res = await sendSalesEmail(p, preview, todoList);
   } catch (err) {
     // Libère le lead pour une nouvelle tentative ultérieure.
     await db.update(prospects).set({ stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
@@ -632,6 +647,51 @@ export async function linkProspectDomain(p: Prospect, customDomain?: string) {
   if (!res.ok) {
     await markAgentRunEnd("domainner", false, res.error);
     throw new Error(res.error);
+  }
+  // v6 : le bundle embarque des URLs absolues vers l'ancien domaine (canonical,
+  // OG, sitemap, JSON-LD). Au lien d'un domaine custom : re-rendu des pages
+  // auxiliaires + patch de l'index + redéploiement (jamais de fetch du HTML).
+  if (p.siteBundle && res.mode === "vercel") {
+    try {
+      const { buildSiteConfig } = await import("./site-config");
+      const { renderAuxPages, patchIndexDomain } = await import("./bundle");
+      const oldBase = `https://${slug}.vercel.app`;
+      const newBase = res.url;
+      const config = buildSiteConfig({ ...(p.clientData ?? {}), DOMAIN: newBase, SLUG: slug }, p.id);
+      const b = p.siteBundle;
+      config.images = {
+        hero: b["images/hero.jpg"] ? "images/hero.jpg" : "",
+        about: b["images/about.jpg"] ? "images/about.jpg" : "",
+        gallery: Array.from({ length: 6 }, (_, i) => (b[`images/work-${i + 1}.jpg`] ? `images/work-${i + 1}.jpg` : "")).filter(Boolean),
+      };
+      const imageFiles = Object.fromEntries(Object.entries(b).filter(([k, v]) => k.startsWith("images/") && v));
+      const newBundle: Record<string, string> = {
+        "index.html": patchIndexDomain(b["index.html"] ?? "", oldBase, newBase),
+        ...renderAuxPages(config),
+        ...imageFiles,
+      };
+      const redeploy = await deploySiteBundle(slug, newBundle);
+      if (redeploy.ok) {
+        await db.update(prospects).set({ siteBundle: newBundle, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+        await logActivity({
+          agentKey: "domainner", action: "bundle_regenere",
+          message: `Bundle re-rendu et redéployé sur ${newBase} (canonical, OG, sitemap mis à jour).`,
+          level: "success", prospectId: p.id, meta: { domain: newBase },
+        });
+      } else {
+        await logActivity({
+          agentKey: "domainner", action: "bundle_regenere_echec",
+          message: `Redéploiement du bundle re-rendu échoué (${redeploy.error}) — l'ancien bundle reste en ligne, non bloquant.`,
+          level: "warn", prospectId: p.id,
+        });
+      }
+    } catch (err) {
+      await logActivity({
+        agentKey: "domainner", action: "bundle_regenere_echec",
+        message: `Re-rendu du bundle impossible (${err instanceof Error ? err.message : err}) — non bloquant.`,
+        level: "warn", prospectId: p.id,
+      });
+    }
   }
   await db.update(prospects).set({ domainUrl: res.url, stage: "domain_linked", updatedAt: new Date() }).where(eq(prospects.id, p.id));
   await markAgentRunEnd("domainner", true);

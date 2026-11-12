@@ -295,7 +295,7 @@ function renderEmailText(opts: { p: Prospect; copy: SalesCopy; previewUrl: strin
 
 export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string; subject?: string; bodyHtml?: string; token?: string };
 
-export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<SendResult> {
+export async function sendSalesEmail(p: Prospect, previewUrl: string, todoList: string[] = []): Promise<SendResult> {
   // Opt-out : aucune copie, aucun appel LLM pour une adresse désinscrite.
   const { isDoNotContact } = await import("./dnc");
   if (await isDoNotContact(p.email)) {
@@ -322,8 +322,24 @@ export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<S
   const agencyAddress = await getSetting("AGENCY_ADDRESS");
   const token = newEmailToken();
   const appBase = await appBaseUrl();
-  const bodyHtml = injectPixel(wrapLinks(renderEmail({ p, copy, previewUrl, price, currency, lang, agencyAddress }), appBase, token), appBase, token);
-  const bodyText = trackifyText(renderEmailText({ p, copy, previewUrl, price, currency, lang }), appBase, token);
+  const bodyText0 = renderEmailText({ p, copy, previewUrl, price, currency, lang });
+  // v6 : checklist client (données à fournir) dérivée de la config du bundle —
+  // injectée dans l'email de livraison, HTML + texte.
+  let todoHtml = "";
+  let todoText = "";
+  if (todoList.length) {
+    const escH = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const title = lang === "en" ? "Before you go live — a short checklist" : "Avant la mise en ligne — une courte checklist";
+    todoHtml =
+      `<div style="margin-top:18px;padding:14px 18px;background:#f4f6fa;border-radius:12px">` +
+      `<p style="margin:0 0 8px;font-weight:700;color:#22262e;font-size:14px">${escH(title)}</p>` +
+      `<ul style="margin:0;padding-left:18px;color:#3c4250;font-size:13.5px;line-height:1.6">` +
+      todoList.map((t) => `<li>${escH(t)}</li>`).join("") +
+      `</ul></div>`;
+    todoText = `\n\n${title} :\n${todoList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
+  }
+  const bodyHtml = injectPixel(wrapLinks(renderEmail({ p, copy, previewUrl, price, currency, lang, agencyAddress }) + todoHtml, appBase, token), appBase, token);
+  const bodyText = trackifyText(bodyText0 + todoText, appBase, token);
   const content: SendResult = { ok: false, simulated: false, subject: copy.subject, bodyHtml, token };
 
   if (!p.email) return { ...content, ok: false, simulated: false, error: "Email absent" };
