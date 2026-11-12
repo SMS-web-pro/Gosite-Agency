@@ -26,6 +26,10 @@ export async function chatCompletion(params: {
   if (!baseUrl || !apiKey) return null;
 
   try {
+    // Backend omniroute : le modèle « agent » est désormais un modèle à
+    // raisonnement (gpt-oss-120b) — sans `reasoning_effort` ni un budget
+    // minimal, tous les tokens partent dans le thinking et le content revient
+    // vide (les gros prompts timeout). Effort réduit + plancher de tokens.
     const res = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
@@ -35,7 +39,8 @@ export async function chatCompletion(params: {
           { role: "system", content: params.system },
           { role: "user", content: params.user },
         ],
-        max_tokens: params.maxTokens ?? 8000,
+        max_tokens: Math.max(params.maxTokens ?? 8000, 2000),
+        reasoning_effort: "low",
         temperature: params.temperature ?? 0.7,
       }),
       signal: AbortSignal.timeout(params.timeoutMs ?? 150000),
@@ -45,7 +50,8 @@ export async function chatCompletion(params: {
       return null;
     }
     const json = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return json.choices?.[0]?.message?.content ?? null;
+    const content = json.choices?.[0]?.message?.content ?? "";
+    return content.trim().length > 0 ? content : null;
   } catch (err) {
     console.error("[llm] réseau:", err instanceof Error ? err.message : err);
     return null;
