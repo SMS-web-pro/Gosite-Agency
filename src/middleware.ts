@@ -9,6 +9,8 @@ const COOKIE = "gsd_admin";
 // - /api/webhooks/email → ?secret=EMAIL_WEBHOOK_SECRET (Worker Cloudflare)
 // Routes de tracking des emails : publiques par design (ce sont les clics des
 // destinataires), sécurisées par le token unique de chaque email.
+// /api/site-form : formulaires des sites clients (v6) — visiteurs publics,
+// protégé par honeypot + rate limit + validation stricte côté route.
 const PUBLIC_PREFIXES = [
   "/api/cron/tick",
   "/api/telegram/webhook",
@@ -16,6 +18,7 @@ const PUBLIC_PREFIXES = [
   "/api/webhooks/email",
   "/api/track/open",
   "/api/track/click",
+  "/api/site-form",
   "/api/login",
 ];
 

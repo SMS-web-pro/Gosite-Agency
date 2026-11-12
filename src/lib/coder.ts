@@ -323,6 +323,13 @@ export async function buildSiteBundle(
   }
   const engine: "gemini" | "fallback" = html ? "gemini" : "fallback";
   if (!html) html = renderFallbackIndex(config);
+  // Garde-fous déterministes (indépendants du LLM) : anti-zoom iOS sur les
+  // inputs + rendu autofill Chrome (bug brief « autofill overflow »).
+  if (!html.includes("-webkit-autofill")) {
+    const guard =
+      '<style>input,select,textarea{font-size:16px}input:-webkit-autofill{box-shadow:0 0 0 40px #fff inset;-webkit-text-fill-color:currentColor}</style>';
+    html = html.includes("</head>") ? html.replace(/<\/head>/i, `${guard}</head>`) : `${html}${guard}`;
+  }
 
   // 4. Bundle complet : index + pages auxiliaires + images locales.
   const bundle: Record<string, string> = { "index.html": html, ...renderAuxPages(config), ...imgs.files };
