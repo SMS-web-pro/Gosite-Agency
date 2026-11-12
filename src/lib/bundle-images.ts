@@ -59,11 +59,17 @@ export async function downloadImages(
   if (aboutUrl) jobs.push({ url: aboutUrl, kind: "about", idx: 0 });
   galleryUrls.forEach((u, i) => jobs.push({ url: u, kind: "gallery", idx: i }));
 
+  // Téléchargements en paquets de 3 (pool = CDN Unsplash : séquentiel serait lent).
+  // Une même URL n'est JAMAIS téléchargée 2 fois : la 2e occurrence réutilise
+  // les bytes (réserve du pool = souvent l'héros/le about).
+  const cache = new Map<string, Buffer | null>();
   for (let i = 0; i < jobs.length; i += PARALLEL) {
     const batch = jobs.slice(i, i + PARALLEL);
-    const results = await Promise.all(batch.map((j) => fetchOne(j.url, impl)));
-    batch.forEach((j, k) => {
-      const buf = results[k];
+    const missing = [...new Set(batch.map((j) => j.url))].filter((u) => !cache.has(u));
+    const fetched = await Promise.all(missing.map((u) => fetchOne(u, impl)));
+    missing.forEach((u, k) => cache.set(u, fetched[k]));
+    batch.forEach((j) => {
+      const buf = cache.get(j.url);
       if (!buf) return;
       let path: string;
       if (j.kind === "hero") path = "images/hero.jpg";

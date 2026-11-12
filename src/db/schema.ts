@@ -65,6 +65,7 @@ export const prospects = pgTable("prospects", {
   rejectReason: text("reject_reason"),
   clientData: jsonb("client_data").$type<Record<string, string>>(), // Mapper sheet
   siteHtml: text("site_html"),
+  siteBundle: jsonb("site_bundle").$type<Record<string, string>>(), // v6: bundle multi-pages (fichiers → base64/texte)
   siteSlug: text("site_slug"),
   deployedUrl: text("deployed_url"),
   deployStatus: text("deploy_status").notNull().default("none"), // none | live | simulated | error

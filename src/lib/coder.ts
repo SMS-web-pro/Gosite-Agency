@@ -8,6 +8,10 @@ import { chatCompletion, extractHtml, llmConfigured } from "./llm";
 import { geminiCompleteStep, geminiKeysConfigured } from "./gemini";
 import { generateSiteHtml } from "./site-template";
 import { findNiche } from "./niches";
+import { buildSiteConfig, resolveServices, type SiteConfig } from "./site-config";
+import { renderAuxPages, renderFallbackIndex, generateTodoList } from "./bundle";
+import { downloadImages, type ImageSlot } from "./bundle-images";
+import { pickSeededImages } from "./images";
 
 const GOLDEN_FR = `RÈGLE D'OR : Tu es un développeur front-end senior d'agence boutique premium (3000 USD par site). Tu livres index.html — LA page d'accueil d'un site multi-pages déjà pourvu de pages /privacy, /terms, /services/[slug] et d'images locales. Chaque ligne doit être celle d'un expert humain — jamais d'un template IA.
 
@@ -142,6 +146,36 @@ export type BuildResult = {
   engine: "gemini" | "llm" | "template";
 };
 
+// Champs bannis du prompt : URLs distantes (hotlink), WhatsApp (FAB interdit v6).
+const PROMPT_HIDDEN_KEYS = [
+  "NICHE_LABEL",
+  "NICHE_ICON",
+  "DISPLAY_FONT",
+  "ABOUT_IMAGE_URL",
+  "HERO_IMAGE_URL",
+  "GALLERY_IMAGE_URLS",
+  "IMAGE_FALLBACK_URL",
+  "WHATSAPP_URL",
+];
+
+/** Prompt utilisateur v6 : dump de la fiche + lignes d'interprétation + ordre. */
+function userPromptFor(sheet: Record<string, string>, lang: "fr" | "en"): string {
+  const niche = findNiche(sheet.BUSINESS_TYPE ?? "");
+  const sheetDump = Object.entries(sheet)
+    .filter(([k]) => !PROMPT_HIDDEN_KEYS.includes(k))
+    .map(([k, v]) => `${k} = ${v}`)
+    .join("\n");
+  return (
+    `CLIENT DATA (${lang === "en" ? "sheet validated by Mapper" : "fiche validée par Mapper"}):\n${sheetDump}\n\n` +
+    `SECTEUR / INDUSTRY: ${lang === "en" ? niche.labelEn || niche.label : niche.label}.\n` +
+    v6SheetLines(sheet, lang) +
+    "\n\n" +
+    (lang === "en"
+      ? `Generate the complete index.html (homepage only) now, applying ALL rules. Content must be 100% specific to the "${niche.labelEn || niche.label}" industry and locally anchored in ${sheet.CITY || "the target city"}, written in NATIVE US ENGLISH.`
+      : `Génère maintenant index.html complet (page d'accueil uniquement), en appliquant TOUTES les règles. Le contenu doit être 100% spécifique au secteur "${niche.label}" et ancré dans la ville de ${sheet.CITY || "la ville cible"}.`)
+  );
+}
+
 export async function buildSite(clientData: Record<string, string>): Promise<BuildResult> {
   const niche = findNiche(clientData.BUSINESS_TYPE ?? "");
   const useLlm = await llmConfigured();
@@ -152,32 +186,7 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
     lang === "en"
       ? "Produce index.html now — the homepage only, no explanations."
       : "Produis index.html maintenant — la page d'accueil uniquement, aucune explication.";
-  // v6 : les URLs d'images distantes (Serper/Unsplash) ne vont JAMAIS au
-  // prompt — le bundle embarque des chemins locaux. WHATSAPP_URL banni (v6).
-  const sheet = Object.entries(clientData)
-    .filter(
-      ([k]) =>
-        ![
-          "NICHE_LABEL",
-          "NICHE_ICON",
-          "DISPLAY_FONT",
-          "ABOUT_IMAGE_URL",
-          "HERO_IMAGE_URL",
-          "GALLERY_IMAGE_URLS",
-          "IMAGE_FALLBACK_URL",
-          "WHATSAPP_URL",
-        ].includes(k)
-    )
-    .map(([k, v]) => `${k} = ${v}`)
-    .join("\n");
-  const user =
-    `CLIENT DATA (${lang === "en" ? "sheet validated by Mapper" : "fiche validée par Mapper"}):\n${sheet}\n\n` +
-    `SECTEUR / INDUSTRY: ${lang === "en" ? niche.labelEn || niche.label : niche.label}.\n` +
-    v6SheetLines(clientData, lang) +
-    "\n\n" +
-    (lang === "en"
-      ? `Generate the complete index.html (homepage only) now, applying ALL rules. Content must be 100% specific to the "${niche.labelEn || niche.label}" industry and locally anchored in ${clientData.CITY}, written in NATIVE US ENGLISH.`
-      : `Génère maintenant index.html complet (page d'accueil uniquement), en appliquant TOUTES les règles. Le contenu doit être 100% spécifique au secteur "${niche.label}" et ancré dans la ville de ${clientData.CITY}.`);
+  const user = userPromptFor(clientData, lang);
 
   if (await geminiKeysConfigured()) {
     const g0 = Date.now();
@@ -240,4 +249,82 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
 
   // Fallback : gabarit interne fidèle au cahier des charges
   return { html: generateSiteHtml(clientData), engine: "template" };
+}
+
+// ───────────────────────── v6 : buildSiteBundle ─────────────────────────
+// Orchestration du bundle : images locales → config → Gemini (index seul) →
+// fallback déterministe → bundle multi-pages. Les pages auxiliaires, le
+// sitemap et le JSON-LD ne passent JAMAIS par le LLM (bundle.ts).
+// geminiImpl/fetchImpl injectables pour les tests (mocks, zéro réseau).
+
+export type BundleBuild = {
+  html: string;
+  bundle: Record<string, string>;
+  engine: "gemini" | "fallback";
+  todoList: string[];
+};
+
+export async function buildSiteBundle(
+  sheet: Record<string, string>,
+  prospectId: number,
+  geminiImpl?: typeof geminiCompleteStep,
+  fetchImpl?: typeof fetch
+): Promise<BundleBuild> {
+  const lang: "fr" | "en" = (sheet.LANG || "fr").startsWith("en") ? "en" : "fr";
+
+  // 1. Images : pool de niche re-pioché (seed nom+ville). Les URLs Serper
+  //    historiques ne sont JAMAIS utilisées — photos concurrents bannies.
+  const niche = findNiche(sheet.BUSINESS_TYPE ?? "");
+  const pool = niche.imagePool.length ? niche.imagePool : [niche.heroImage, niche.aboutImage];
+  const picked = pickSeededImages(pool, `${sheet.BUSINESS_NAME ?? ""}|${sheet.CITY ?? ""}`, 6);
+  const seen = new Set<string>();
+  const slots: ImageSlot[] = [
+    { slot: "hero", url: picked.hero },
+    { slot: "about", url: picked.about },
+    ...picked.gallery.filter((u) => (seen.has(u) ? false : (seen.add(u), true))).map((url) => ({ slot: "gallery" as const, url })),
+  ];
+  const imgs = await downloadImages(slots, fetchImpl);
+
+  // 2. Fiche v6 : chemins locaux, endpoint form, services complets (prompt).
+  const s6: Record<string, string> = {
+    ...sheet,
+    IMAGE_SOURCE: "local",
+    HERO_IMAGE_PATH: imgs.hero ?? "",
+    ABOUT_IMAGE_PATH: imgs.about ?? "",
+    GALLERY_IMAGE_PATHS: imgs.gallery.join("|"),
+    FORM_ACTION: `https://gosite.digital/api/site-form/${prospectId}`,
+    SERVICES: JSON.stringify(resolveServices(sheet)),
+  };
+  const config = buildSiteConfig(s6, prospectId);
+  config.images = { hero: imgs.hero ?? "", about: imgs.about ?? "", gallery: imgs.gallery };
+
+  // 3. Gemini (moteur unique v6) → fallback déterministe.
+  const kickoff =
+    lang === "en"
+      ? "Produce index.html now — the homepage only, no explanations."
+      : "Produis index.html maintenant — la page d'accueil uniquement, aucune explication.";
+  const doGemini = geminiImpl ?? geminiCompleteStep;
+  let html: string | null = null;
+  try {
+    const raw = await doGemini({
+      system: goldenPrompt(lang),
+      user: `${userPromptFor(s6, lang)}\n\n${kickoff}`,
+      maxTokens: 65536,
+      temperature: 0.55,
+      timeoutMs: 180_000,
+      deadlineMs: 250_000,
+    });
+    if (raw) {
+      const extracted = extractHtml(raw);
+      if (extracted && extracted.length > 8000) html = extracted;
+    }
+  } catch {
+    // Gemini KO → fallback déterministe
+  }
+  const engine: "gemini" | "fallback" = html ? "gemini" : "fallback";
+  if (!html) html = renderFallbackIndex(config);
+
+  // 4. Bundle complet : index + pages auxiliaires + images locales.
+  const bundle: Record<string, string> = { "index.html": html, ...renderAuxPages(config), ...imgs.files };
+  return { html, bundle, engine, todoList: generateTodoList(config) };
 }

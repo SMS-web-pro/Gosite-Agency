@@ -9,7 +9,7 @@ import { ensureAgentsSeeded, markAgentRunEnd, markAgentRunStart } from "./agents
 import { scoutSearch, provisionReplacementKey } from "./serper";
 import { verifyEmail } from "./email-verify";
 import { buildClientSheet, enrichSheetFromRealData, validateSheet } from "./mapper";
-import { buildSite } from "./coder";
+import { buildSiteBundle } from "./coder";
 import { deployToVercel, linkDomain, slugifyId } from "./deploy";
 import { sendSalesEmail } from "./emailer";
 import { createWhopPayment } from "./whop";
@@ -377,19 +377,21 @@ export async function mapProspect(p: Prospect) {
 }
 
 // ─────────────────────────── 5. CODER ───────────────────────────
+// v6 : slug d'abord (domain connu pour la config), puis bundle multi-pages
+// (index Gemini, pages auxiliaires déterministes, images locales).
 export async function buildProspectSite(p: Prospect) {
   await markAgentRunStart("coder");
   const sheet = p.clientData ?? buildClientSheet(p);
-  const result = await buildSite(sheet);
   const slug = await decideSlug(p);
-  await updateWithSlug(p.id, slug, { siteHtml: result.html, stage: "site_built" });
+  const result = await buildSiteBundle({ ...sheet, SLUG: slug }, p.id);
+  await updateWithSlug(p.id, slug, { siteHtml: result.html, siteBundle: result.bundle, stage: "site_built" });
   await markAgentRunEnd("coder", true);
   await logActivity({
     agentKey: "coder", action: "site_genere",
-    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko) — moteur ${result.engine === "gemini" ? "Gemini" : result.engine === "llm" ? "LLM omniroute" : "gabarit interne"}.`,
-    level: "success", prospectId: p.id, meta: { engine: result.engine, size: result.html.length },
+    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko, ${Object.keys(result.bundle).length} fichiers) — moteur ${result.engine === "gemini" ? "Gemini" : "fallback déterministe"}.`,
+    level: "success", prospectId: p.id, meta: { engine: result.engine, size: result.html.length, bundleFiles: Object.keys(result.bundle).length },
   });
-  return { ...result, slug };
+  return { html: result.html, bundle: result.bundle, engine: result.engine, todoList: result.todoList, slug };
 }
 
 // ─────────────────────────── 6. DEPLOYER ───────────────────────────

@@ -33,7 +33,9 @@ const num = (v: string | undefined): number | null => {
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 
-function parseServices(sheet: Record<string, string>): SiteService[] {
+/** Services complets du site (SERVICES + merge SERVICES_FULL + repli niche)
+ *  — partagé entre buildSiteConfig et le prompt Gemini (buildSiteBundle). */
+export function resolveServices(sheet: Record<string, string>): SiteService[] {
   let list: { title?: unknown; short?: unknown; desc?: unknown; slug?: unknown; paras?: unknown; bullets?: unknown }[] = [];
   try { list = JSON.parse(sheet.SERVICES || "[]"); } catch { list = []; }
   let services: SiteService[] = (Array.isArray(list) ? list : [])
@@ -107,7 +109,7 @@ export function buildSiteConfig(sheet: Record<string, string>, prospectId: numbe
     country: str(sheet.COUNTRY, 60) || "France", currency: str(sheet.CURRENCY, 8) || "USD",
     domain, mapUrl: `https://www.google.com/maps/search/?api=1&query=${query}`, mapEmbed, lat, lng,
     rating, reviewCount, hours, emergency247: /24\s*\/\s*7|24h/i.test(weekday),
-    services: parseServices(sheet), areas,
+    services: resolveServices(sheet), areas,
     socials: { ...(ig && ig.toLowerCase() !== "none" ? { instagram: ig } : {}), ...(fb && fb.toLowerCase() !== "none" ? { facebook: fb } : {}) },
     formAction: `https://gosite.digital/api/site-form/${prospectId}`,
     images: { hero: "images/hero.jpg", about: "images/about.jpg", gallery: [1, 2, 3, 4, 5, 6].map((i) => `images/work-${i}.jpg`) },
