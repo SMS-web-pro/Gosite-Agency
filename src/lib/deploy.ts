@@ -210,7 +210,7 @@ export async function linkDomain(slug: string, domain: string): Promise<{ ok: bo
       // Le domaine peut déjà être lié à CE projet (re-déploiement) : l'API
       // Vercel refuse le doublon. On vérifie la liste des domaines du projet ;
       // s'il est bien présent, c'est un succès (idempotent).
-      if (/already assigned|already exists/i.test(msg)) {
+      if (/already assigned|already exists|already in use/i.test(msg)) {
         const lst = await fetch(`https://api.vercel.com/v9/projects/${encodeURIComponent(slug)}/domains${qs}`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: AbortSignal.timeout(30000),
