@@ -10,7 +10,7 @@ import { scoutSearch, provisionReplacementKey } from "./serper";
 import { verifyEmail } from "./email-verify";
 import { buildClientSheet, enrichSheetFromRealData, validateSheet } from "./mapper";
 import { buildSiteBundle } from "./coder";
-import { deployToVercel, linkDomain, slugifyId } from "./deploy";
+import { deployToVercel, deploySiteBundle, linkDomain, slugifyId } from "./deploy";
 import { sendSalesEmail } from "./emailer";
 import { createWhopPayment } from "./whop";
 import { notifyTelegram } from "./telegram";
@@ -456,9 +456,10 @@ async function updateWithSlug(selfId: number, slug: string, values: Partial<type
 
 export async function deployProspectSite(p: Prospect) {
   await markAgentRunStart("deployer");
-  if (!p.siteHtml) throw new Error("Aucun site généré");
+  if (!p.siteHtml && !p.siteBundle) throw new Error("Aucun site généré");
   const slug = await decideSlug(p);
-  const res = await deployToVercel(slug, p.siteHtml);
+  // v6 : bundle multi-pages si présent, sinon chemin legacy single-file.
+  const res = p.siteBundle ? await deploySiteBundle(slug, p.siteBundle) : await deployToVercel(slug, p.siteHtml || "");
   if (!res.ok) {
     await markAgentRunEnd("deployer", false, res.error);
     await logActivity({ agentKey: "deployer", action: "deploy_echec", message: `Déploiement Vercel échoué : ${res.error}`, level: "error", prospectId: p.id });

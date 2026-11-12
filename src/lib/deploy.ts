@@ -76,9 +76,59 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
   }
 }
 
-const CF_API = "https://api.cloudflare.com/client/v4";
+// v6 : déploiement d'un BUNDLE multi-fichiers (index + pages auxiliaires +
+// images locales). target production → le déploiement est aliasé par Vercel
+// sur l'URL stable du projet : https://{slug}.vercel.app. Les fichiers binaires
+// du bundle (images) sont déjà en base64 : passés tels quels ; les textes sont
+// encodés ici. Compat : deployToVercel reste pour les leads legacy (single-file).
+const BINARY_FILE_RE = /\.(jpe?g|png|gif|webp|avif|ico)$/i;
 
-function registrableOf(domain: string): string {
+export async function deploySiteBundle(slug: string, bundle: Record<string, string>): Promise<DeployResult> {
+  const token = await getSetting("VERCEL_TOKEN");
+  const teamId = await getSetting("VERCEL_TEAM_ID");
+  const agencyDomain = normalizeAgencyDomain((await getSetting("AGENCY_DOMAIN")) || "gosite.digital");
+
+  if (!token) {
+    if (!(await allowSimulation())) {
+      return { ok: false, url: "", mode: "vercel", error: "VERCEL_TOKEN non configuré (Réglages → Vercel)." };
+    }
+    return { ok: true, url: `https://${slug}.${agencyDomain}`, mode: "simulated" };
+  }
+
+  try {
+    const files = Object.entries(bundle).map(([file, content]) => ({
+      file,
+      data: BINARY_FILE_RE.test(file) ? content : Buffer.from(content, "utf8").toString("base64"),
+      encoding: "base64",
+    }));
+    const qs = `${teamId ? `teamId=${encodeURIComponent(teamId)}&` : ""}forceNew=1`;
+    const res = await fetch(`https://api.vercel.com/v13/deployments?${qs}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: slug,
+        target: "production",
+        files,
+        projectSettings: { framework: null, buildCommand: "", installCommand: "", outputDirectory: "." },
+      }),
+      signal: AbortSignal.timeout(90000),
+    });
+    const json = (await res.json()) as { url?: string; error?: { message?: string } };
+    if (!res.ok || !json.url) {
+      return { ok: false, url: "", mode: "vercel", error: json.error?.message ?? `HTTP ${res.status}` };
+    }
+    await fetch(
+      `https://api.vercel.com/v9/projects/${encodeURIComponent(slug)}${teamId ? `?teamId=${encodeURIComponent(teamId)}` : ""}`,
+      { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ ssoProtection: null }), signal: AbortSignal.timeout(15000) },
+    ).catch(() => {});
+    // Alias STABLE du projet (pas l'URL de déploiement à hash variable).
+    return { ok: true, url: `https://${slug}.vercel.app`, mode: "vercel" };
+  } catch (err) {
+    return { ok: false, url: "", mode: "vercel", error: err instanceof Error ? err.message : "network" };
+  }
+}
+
+const CF_API = "https://api.cloudflare.com/client/v4";function registrableOf(domain: string): string {
   const p = domain.split(".");
   return p.length >= 2 ? p.slice(-2).join(".") : domain;
 }
