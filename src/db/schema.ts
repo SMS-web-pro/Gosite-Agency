@@ -280,3 +280,16 @@ export type Objective = typeof objectives.$inferSelect;
 export type Prospect = typeof prospects.$inferSelect;
 export type Activity = typeof activities.$inferSelect;
 export type SerperKey = typeof serperKeys.$inferSelect;
+
+// ─────────────────────────────────────────────
+// SITE LEADS — demandes envoyées depuis les sites clients (v6, /api/site-form)
+// ─────────────────────────────────────────────
+export const siteLeads = pgTable("site_leads", {
+  id: serial("id").primaryKey(),
+  prospectId: integer("prospect_id").notNull(),
+  payload: jsonb("payload").$type<Record<string, string>>().notNull(), // name/phone/email/zip/service/message
+  ip: text("ip"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SiteLead = typeof siteLeads.$inferSelect;

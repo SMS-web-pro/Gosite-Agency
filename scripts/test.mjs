@@ -6,7 +6,7 @@ import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process";
 import { globSync } from "node:fs";
 
-const LIB_FILES = ["format.ts", "niches.ts", "images.ts", "images-search.ts", "mapper.ts", "site-template.ts", "dnc.ts", "llm-coerce.ts", "inbound.ts", "mime.ts", "gemini-keys.ts", "track.ts", "site-config.ts", "bundle.ts", "bundle-images.ts", "coder.ts"];
+const LIB_FILES = ["format.ts", "niches.ts", "images.ts", "images-search.ts", "mapper.ts", "site-template.ts", "dnc.ts", "llm-coerce.ts", "inbound.ts", "mime.ts", "gemini-keys.ts", "track.ts", "site-config.ts", "bundle.ts", "bundle-images.ts", "coder.ts", "form-receive.ts"];
 const LIB_DIR = "tests/_lib";
 
 rmSync(LIB_DIR, { recursive: true, force: true });
