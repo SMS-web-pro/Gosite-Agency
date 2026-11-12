@@ -348,6 +348,28 @@ export async function buildSiteBundle(
       '<style>input,select,textarea{font-size:16px}input:-webkit-autofill{box-shadow:0 0 0 40px #fff inset;-webkit-text-fill-color:currentColor}</style>';
     html = html.includes("</head>") ? html.replace(/<\/head>/i, `${guard}</head>`) : `${html}${guard}`;
   }
+  // Garde SEO déterministe : canonical + Open Graph. Le prompt ne peut pas
+  // garantir ces métas → injection au build (patchIndexDomain les repatchera
+  // au changement de domaine).
+  const seoBase = (config.domain || "").replace(/\/$/, "");
+  if (seoBase && html.includes("</head>")) {
+    const pageTitle = /<title>([^<]*)<\/title>/i.exec(html)?.[1] ?? config.name;
+    const pageDesc = /<meta\s+name="description"\s+content="([^"]*)"/i.exec(html)?.[1] ?? "";
+    const seoTags: string[] = [];
+    if (!/<link[^>]+rel="canonical"/i.test(html)) seoTags.push(`<link rel="canonical" href="${seoBase}/">`);
+    if (!/property="og:/.test(html)) {
+      seoTags.push(
+        `<meta property="og:type" content="website">`,
+        `<meta property="og:title" content="${pageTitle}">`,
+        `<meta property="og:description" content="${pageDesc}">`,
+        `<meta property="og:url" content="${seoBase}/">`
+      );
+      if (config.images.hero) seoTags.push(`<meta property="og:image" content="${seoBase}/images/hero.jpg">`);
+      seoTags.push(`<meta name="twitter:card" content="${config.images.hero ? "summary_large_image" : "summary"}">`);
+      if (config.images.hero) seoTags.push(`<meta name="twitter:image" content="${seoBase}/images/hero.jpg">`);
+    }
+    if (seoTags.length) html = html.replace(/<\/head>/i, `${seoTags.join("\n")}\n</head>`);
+  }
 
   // 4. Bundle complet : index + pages auxiliaires + images locales.
   const bundle: Record<string, string> = { "index.html": html, ...renderAuxPages(config), ...imgs.files };

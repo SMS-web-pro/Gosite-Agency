@@ -31,7 +31,7 @@ function authorized(req: NextRequest, adminKey: string): boolean {
   return false;
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const adminKey = process.env.ADMIN_KEY || "";
   // Gracieuse dégradation : sans ADMIN_KEY configurée, l'app reste ouverte
   // (usage personnel). La protection s'active dès que la variable existe.

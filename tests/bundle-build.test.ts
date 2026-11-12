@@ -76,6 +76,7 @@ const geminiOk = async (opts: { user: string }) => {
   check("bundle: index = html stocké", r.bundle["index.html"] === r.html);
   check("bundle: prompt portait formAction (echo mock)", r.html.includes("FORM 1952"));
   check("bundle: garde CSS autofill injectée", r.html.includes("-webkit-autofill") && r.html.includes("font-size:16px"));
+  check("bundle: garde SEO canonical+OG injectée", r.html.includes('rel="canonical"') && r.html.includes('property="og:url"'));
   check("bundle: TODO >= 4", r.todoList.length >= 4);
 }
 
