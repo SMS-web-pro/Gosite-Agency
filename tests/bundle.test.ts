@@ -1,4 +1,4 @@
-import { renderAuxPages, generateTodoList } from "./_lib/bundle.ts";
+import { renderAuxPages, generateTodoList, renderFallbackIndex } from "./_lib/bundle.ts";
 import { buildSiteConfig } from "./_lib/site-config.ts";
 
 let fail = 0;
@@ -72,5 +72,28 @@ const todo = generateTodoList(config);
 check("TODO >= 4 items", todo.length >= 4);
 check("TODO photos + licence + avis", todo.some((t) => /photo/i.test(t)) && todo.some((t) => /license/i.test(t)) && todo.some((t) => /review/i.test(t)));
 check("TODO pas de photos si... (toujours liste)", todo.length >= 4);
+
+// T4 — fallback index déterministe
+const idx = renderFallbackIndex(config);
+check("fallback doctype", idx.startsWith("<!DOCTYPE html>"));
+check("fallback data-reveal", idx.includes("data-reveal") && !idx.includes("data-aos"));
+check("fallback zéro hotlink", !/<img[^>]+src="https?:\/\//.test(idx));
+check("fallback onerror substitution locale", idx.includes("this.onerror=null;this.src='images/about.jpg'"));
+check("fallback 3 dividers", (idx.match(/section-divider/g) || []).length >= 3);
+check("fallback form action + honeypot", idx.includes(`action="${config.formAction}"`) && idx.includes('name="website"'));
+check("fallback rating null -> aucune note", (() => { const i = renderFallbackIndex(buildSiteConfig({ ...sheet, GOOGLE_RATING: "", REVIEW_COUNT: "" }, 1)); return !i.includes("4.8") && !i.includes("aggregateRating") && !i.includes("Google reviews"); })());
+check("fallback mobile bar", idx.includes("mobile-bar") && idx.includes("tel:"));
+check("fallback pas de FAB WhatsApp", !idx.toLowerCase().includes("whatsapp"));
+check("fallback pas de modale légale", !idx.includes("legalModal"));
+check("fallback liens légaux réels", idx.includes('href="/privacy"') && idx.includes('href="/terms"'));
+check("fallback services cliquables", idx.includes('href="/services/leak-repair"'));
+check("fallback hero overlay image locale", idx.includes("images/hero.jpg"));
+check("fallback topbar une ligne", idx.includes("24/7 Emergency") === config.emergency247 && (config.emergency247 || idx.includes("Mon-Fri 8-6")));
+check("fallback get a free quote", idx.includes("Get a Free Quote") && !idx.includes("Get Directions"));
+check("fallback JSON-LD LocalBusiness + FAQ", idx.includes("application/ld+json") && idx.includes("FAQPage"));
+
+// rating 0 -> section testimonials omise, aucune mention de note
+const idx0 = renderFallbackIndex(buildSiteConfig({ ...sheet, GOOGLE_RATING: "0.0", REVIEW_COUNT: "0" }, 1));
+check("fallback rating 0 -> pas de bloc avis", !idx0.includes("4.8") && !idx0.includes("reviews on Google"));
 
 process.exit(fail ? 1 : 0);
