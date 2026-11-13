@@ -68,7 +68,8 @@ NOMENCLATURE OBLIGATOIRE (marqueurs exacts vérifiés — un marqueur absent = l
 
 INTERDITS ABSOLUS (motif de rejet immédiat) : data-aos · tout compteur numérique animé (la note et le nombre d'avis restent STATIQUES) · toute note, étoile ou avis INVENTÉ · grille 2x2 de stat cards dans le hero · bouton flottant WhatsApp ou FAB téléphone · modales légales (#legalModal/#privacyModal) — les pages légales existent DÉJÀ en /privacy et /terms, le footer ne fait que LIER · srcset · toute URL http(s) d'image externe (hotlink) — UNIQUEMENT les chemins locaux fournis · bouton « Get Directions » (utiliser « Ouvrir dans Google Maps » vers MAPS_LINK) · emoji · alert()/confirm().
 
-SORTIE : commence directement par <!DOCTYPE html> et termine par </html>. Aucune explication, aucun markdown, aucun texte avant ou après, aucun commentaire HTML nécessaire.`;
+SORTIE : commence directement par <!DOCTYPE html> et termine par </html>. Aucune explication, aucun markdown, aucun texte avant ou après, aucun commentaire HTML nécessaire.
+VOLUME (contrainte dure — un HTML trop long = rejet) : l'index.html fait au maximum 600 lignes — CSS compact (une règle CSS par ligne), pas de ligne vide, HTML sémantique dense. Un site de qualité tient en 600 lignes : chaque ligne compte.`;
 
 const GOLDEN_EN = `GOLDEN RULE: You are a senior front-end developer from a premium boutique agency ($3,000 per site). You deliver index.html — THE homepage of a multi-page site that already has /privacy, /terms, /services/[slug] pages and local images. Every line must read like a human expert — never an AI template.
 
@@ -125,7 +126,8 @@ MANDATORY NOMENCLATURE (exact markers checked — one missing marker = rejected 
 
 ABSOLUTE BANS (immediate rejection triggers): data-aos · any animated numeric counter (rating and review count stay STATIC) · any INVENTED rating, star or review · 2x2 stat card grid in the hero · WhatsApp floating button or phone FAB · legal modals (#legalModal/#privacyModal) — the legal pages ALREADY exist at /privacy and /terms, the footer only LINKS to them · srcset · any external http(s) image URL (hotlink) — ONLY the provided local paths · "Get Directions" button (use "Open in Google Maps" toward MAPS_LINK) · emoji · alert()/confirm().
 
-OUTPUT: start directly with <!DOCTYPE html> and end with </html>. No explanation, no markdown, no text before or after, no HTML comment needed.`;
+OUTPUT: start directly with <!DOCTYPE html> and end with </html>. No explanation, no markdown, no text before or after, no HTML comment needed.
+VOLUME (hard constraint — an over-long HTML = rejection): index.html is at most 600 lines — compact CSS (one CSS rule per line), no empty lines, dense semantic HTML. A quality site fits in 600 lines: every line counts.`;
 
 function goldenPrompt(lang: "fr" | "en"): string {
   return lang === "en" ? GOLDEN_EN : GOLDEN_FR;
@@ -345,7 +347,7 @@ export async function buildSiteBundle(
     const raw = await doGemini({
       system: goldenPrompt(lang),
       user: `${userPromptFor(s6, lang)}\n\n${kickoff}`,
-      maxTokens: 65536,
+      maxTokens: 32768,
       temperature: 0.55,
       timeoutMs: 40_000,
       deadlineMs: 48_000,
@@ -354,7 +356,7 @@ export async function buildSiteBundle(
       const extracted = extractHtml(raw);
       // Validation marqueurs (le prompt les annonce « rejeté si absent ») :
       // un HTML incomplet bascule vers le fallback déterministe.
-      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/"].every((m) => extracted.includes(m))) {
+      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/", "t-card"].every((m) => extracted.includes(m))) {
         html = extracted;
       }
     }

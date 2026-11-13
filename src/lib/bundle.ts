@@ -278,9 +278,27 @@ export function renderFallbackIndex(config: SiteConfig): string {
   const faqHtml = faq.map(([q, a], i) => `
       <div class="faq-item" data-reveal><button type="button" class="faq-q" aria-expanded="${i === 0}"><span>${esc(q)}</span><span class="faq-x">+</span></button><div class="faq-a" ${i === 0 ? "" : 'hidden'}><p>${esc(a)}</p></div></div>`).join("");
   const faqLd = JSON.stringify({ "@context": "https://schema.org", "@type": "FAQPage", mainEntity: faq.map(([q, a]) => ({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } })) }).replace(/</g, "\\u003c");
-  const googleBlock = config.rating !== null && config.reviewCount !== null
-    ? `<section id="reviews" class="sec sec-light"><div class="wrap"><div class="g-card" data-reveal><div class="g-badge">G</div><div class="g-score"><span class="g-num">${config.rating}</span><span class="g-stars" aria-hidden="true">★★★★★</span><p>${config.reviewCount} ${en ? "verified public reviews on Google" : "avis publics vérifiés sur Google"}</p></div><a class="btn btn-ghost" href="${attr(config.mapUrl)}" target="_blank" rel="noopener">${en ? "See reviews on Google" : "Voir les avis sur Google"}</a></div></div></section>`
-    : "";
+  // Section réputation : TOUJOURS présente. Note réelle → carte animée avec
+  // étoiles en cascade (starPop) + double CTA ; pas de note → invitation
+  // honnête « Écrire un avis sur Google ». Aucun chiffre inventé.
+  const starFull = `<svg class="t-star" viewBox="0 0 24 24" width="22" height="22" fill="#FBBC04" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+  const starLine = `<svg class="t-star" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FBBC04" stroke-width="1.6" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+  const starRow = [1, 2, 3, 4, 5].map((i) => (i <= Math.round(Number(config.rating) || 0) ? starFull : starLine)).join("");
+  const googleBlock = `
+    <section id="testimonials" class="sec sec-light"><div class="wrap"><div class="t-card${config.rating === null || config.reviewCount === null ? " t-invite" : ""}" data-reveal>
+    ${config.rating !== null && config.reviewCount !== null ? `
+      <div class="t-head"><div class="t-gbadge" aria-hidden="true">G</div>
+      <div class="t-score"><div class="t-note">${config.rating}<span>/5</span></div><div class="t-stars" aria-label="${config.rating} / 5">${starRow}</div><div class="t-count">${config.reviewCount} ${en ? "verified public reviews on Google" : "avis publics vérifiés sur Google"}</div></div></div>
+      <p class="t-copy">${en ? `${attr(config.name)}'s reputation is written on its Google profile: an average rating of ${config.rating}/5 built from ${config.reviewCount} public reviews left by real customers.` : `La réputation de ${attr(config.name)} se lit sur sa fiche Google : une note moyenne de ${config.rating}/5 construite sur ${config.reviewCount} avis publics laissés par ses clients.`}</p>
+      <div class="t-actions"><a class="btn btn-primary" href="${attr(config.mapUrl)}" target="_blank" rel="noopener">${en ? "See reviews on Google" : "Lire les avis sur Google"}</a><a class="btn btn-ghost" href="${attr(config.mapUrl)}" target="_blank" rel="noopener">${en ? "Write a review" : "Écrire un avis"}</a></div>
+      <div class="t-chips"><span class="t-chip">${en ? "Reviews verifiable in one click" : "Avis vérifiables en un clic"}</span><span class="t-chip">${en ? "Rated by real customers" : "Noté par des clients réels"}</span><span class="t-chip">${en ? "Every client answered" : "Réponse à chaque client"}</span></div>`
+    : `
+      <div class="t-gbadge t-gbadge-line" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg></div>
+      <div class="kicker">${en ? "Your review matters" : "Votre avis compte"}</div>
+      <h3 class="t-invite-title">${en ? `${attr(config.name)} is growing — and your feedback is part of it` : `${attr(config.name)} grandit — et votre avis en fait partie`}</h3>
+      <p class="t-copy">${en ? "We are a young business: no numbers to show off, a service to prove. Your honest review on Google is the best way to help us get better." : "Nous sommes une jeune enseigne : pas de chiffres à brandir, un service à prouver. Votre avis honnête sur Google est la meilleure façon de nous aider à progresser."}</p>
+      <div class="t-actions"><a class="btn btn-primary" href="${attr(config.mapUrl)}" target="_blank" rel="noopener">${en ? "Write a review on Google" : "Écrire un avis sur Google"}</a></div>`}
+    </div></div></section>`;
   const why = en
     ? [["Upfront pricing", "You approve the quote before we start — no surprise line items."], ["On-time arrival", "We respect your schedule and call ahead if anything shifts."], ["Clean job site", "We leave your home as clean as we found it — drop cloths and cleanup included."], ["Local and responsive", `Based in ${config.city}, we answer the phone and follow up after the job.`]]
     : [["Prix annoncé", "Vous validez le devis avant le début — aucune ligne surprise."], ["Ponctualité", "Nous respectons votre agenda et prévenons si quoi que ce soit bouge."], ["Chantier propre", "Nous repartons chez vous aussi propre qu'en arrivant."], ["Local et joignable", `Basés à ${config.city}, nous répondons au téléphone et faisons le suivi après le chantier.`]];
@@ -355,10 +373,26 @@ ${SHARED_CSS}
 .g-photo{aspect-ratio:4/3;background-size:cover;background-position:center;position:relative}
 .g-photo img{width:100%;height:100%;object-fit:cover}
 .g-plain,.hero-plain{background:linear-gradient(135deg,var(--c-primary),var(--c-accent));opacity:.92}
-.g-card{display:flex;align-items:center;gap:28px;flex-wrap:wrap;background:#fff;border:1px solid rgba(18,41,75,.08);border-radius:var(--radius-lg);padding:34px;box-shadow:var(--shadow-2)}
-.g-badge{width:52px;height:52px;border-radius:var(--radius-pill);background:#4285F4;color:#fff;font-weight:800;font-size:1.6rem;display:flex;align-items:center;justify-content:center}
-.g-stars{color:#FBBC04;font-size:1.3rem;letter-spacing:.15em}
-.g-num{font-size:2.6rem;font-weight:800;color:var(--c-primary);margin-right:10px}
+/* Réputation animée (étoiles en cascade CSS pur) */
+.t-card{background:#fff;border:1px solid rgba(18,41,75,.08);border-radius:var(--radius-lg);padding:38px 34px;box-shadow:var(--shadow-2);max-width:680px;margin:0 auto;text-align:center;transition:transform .25s ease,box-shadow .25s ease}
+.t-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-3)}
+.t-head{display:flex;align-items:center;justify-content:center;gap:20px;margin-bottom:16px}
+.t-gbadge{width:52px;height:52px;border-radius:50%;background:#4285F4;color:#fff;font-weight:800;font-size:1.5rem;display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 6px 16px rgba(66,133,244,.32)}
+.t-gbadge-line{background:none;border:1.5px solid var(--c-accent);color:var(--c-accent);box-shadow:none}
+.t-score{text-align:left}
+.t-note{font-size:2.6rem;font-weight:800;color:var(--c-primary);line-height:1}
+.t-note span{font-size:1.2rem;font-weight:600;color:#8494a8}
+.t-stars{display:flex;gap:4px;margin:10px 0 6px}
+.t-star{opacity:0;transform:scale(.5);animation:starPop .45s cubic-bezier(.16,1,.3,1) forwards}
+.t-stars .t-star:nth-child(1){animation-delay:.15s}.t-stars .t-star:nth-child(2){animation-delay:.27s}.t-stars .t-star:nth-child(3){animation-delay:.39s}.t-stars .t-star:nth-child(4){animation-delay:.51s}.t-stars .t-star:nth-child(5){animation-delay:.63s}
+@keyframes starPop{to{opacity:1;transform:scale(1)}}
+.t-count{font-size:.9rem;color:#5a6b7d}
+.t-copy{color:#5a6b7d;line-height:1.75;max-width:56ch;margin:0 auto 22px}
+.t-invite-title{color:var(--c-primary);font-size:1.4rem;margin:8px 0 10px}
+.t-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:20px}
+.t-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.t-chip{font-size:12px;font-weight:600;color:#5a6b7d;background:var(--c-neutral);border:1px solid rgba(18,41,75,.1);border-radius:var(--radius-pill);padding:7px 14px}
+@media(prefers-reduced-motion:reduce){.t-star{animation:none;opacity:1;transform:scale(1)}}
 .about-grid{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center;margin-top:36px}
 .about-photo{aspect-ratio:4/5;border-radius:var(--radius-lg);background-size:cover;background-position:center;box-shadow:var(--shadow-2);background-image:url('${config.images.about}')}
 .about-photo img{width:100%;height:100%;object-fit:cover;border-radius:var(--radius-lg)}
@@ -392,8 +426,31 @@ ${SHARED_CSS}
 [data-reveal].in{opacity:1;transform:none}
 @media(prefers-reduced-motion:reduce){[data-reveal]{opacity:1;transform:none;transition:none}}
 @media(max-width:900px){.w-grid{grid-template-columns:repeat(2,1fr)}.about-grid,.contact-grid{grid-template-columns:1fr}.foot-grid{grid-template-columns:1fr}}
-@media(max-width:768px){.s-grid{grid-template-columns:repeat(2,1fr)}.g-grid{grid-template-columns:repeat(2,1fr)}.p-flow{grid-template-columns:1fr}.p-line{display:none}.nav-links{display:none}.mobile-bar{display:grid}.sec{padding:56px 0}}
-@media(max-width:480px){.s-grid,.g-grid{grid-template-columns:1fr}}
+@media(max-width:768px){
+  .s-grid{grid-template-columns:repeat(2,1fr)}
+  .g-grid{grid-template-columns:repeat(2,1fr)}
+  .p-flow{grid-template-columns:1fr}
+  .p-line{display:none}
+  .nav-links{display:none}
+  .mobile-bar{display:grid}
+  .sec{padding:56px 0}
+  .wrap{padding:0 16px}
+  .hero-in{padding:72px 16px 80px;text-align:center}
+  .hero h1{font-size:clamp(2rem,8vw,2.6rem)}
+  .hero-cta{flex-direction:column;align-items:stretch}
+  .hero-cta .btn{width:100%;height:50px;justify-content:center}
+  .btn{min-height:48px;padding:12px 20px;font-size:.95rem}
+  .c-form,.c-info{padding:24px 18px}
+  .c-form input,.c-form select,.c-form textarea{height:48px;font-size:16px}
+  .t-card{padding:28px 18px}
+  .t-head{flex-direction:column;gap:12px}
+  .t-score{text-align:center}
+  .t-stars{justify-content:center}
+  .t-actions .btn{width:100%;justify-content:center}
+  .trust-in{gap:14px;font-size:.82rem}
+  .topbar{font-size:.8rem;padding:7px 12px}
+}
+@media(max-width:480px){.s-grid,.g-grid{grid-template-columns:1fr}.t-chip{font-size:11px;padding:6px 10px}}
 </style>
 <script type="application/ld+json">${ldBusiness(config)}</script>
 <script type="application/ld+json">${faqLd}</script>

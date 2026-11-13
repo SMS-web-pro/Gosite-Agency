@@ -81,7 +81,11 @@ check("fallback zéro hotlink", !/<img[^>]+src="https?:\/\//.test(idx));
 check("fallback onerror substitution locale", idx.includes("this.onerror=null;this.src='images/about.jpg'"));
 check("fallback 3 dividers", (idx.match(/section-divider/g) || []).length >= 3);
 check("fallback form action + honeypot", idx.includes(`action="${config.formAction}"`) && idx.includes('name="website"'));
-check("fallback rating null -> aucune note", (() => { const i = renderFallbackIndex(buildSiteConfig({ ...sheet, GOOGLE_RATING: "", REVIEW_COUNT: "" }, 1)); return !i.includes("4.8") && !i.includes("aggregateRating") && !i.includes("Google reviews"); })());
+check("fallback rating null -> aucune note + invitation", (() => {
+  const i = renderFallbackIndex(buildSiteConfig({ ...sheet, GOOGLE_RATING: "", REVIEW_COUNT: "" }, 1));
+  // « 4.8 » matcherait le path SVG de l'étoile (« 4.87 ») — on cible la note rendue.
+  return !i.includes("4.8</span>") && !i.includes("4.8/5") && !i.includes("aggregateRating") && !i.includes("Google reviews") && i.includes("Your review matters");
+})());
 check("fallback mobile bar", idx.includes("mobile-bar") && idx.includes("tel:"));
 check("fallback pas de FAB WhatsApp", !idx.toLowerCase().includes("whatsapp"));
 check("fallback pas de modale légale", !idx.includes("legalModal"));
@@ -92,8 +96,8 @@ check("fallback topbar une ligne", idx.includes("24/7 Emergency") === config.eme
 check("fallback get a free quote", idx.includes("Get a Free Quote") && !idx.includes("Get Directions"));
 check("fallback JSON-LD LocalBusiness + FAQ", idx.includes("application/ld+json") && idx.includes("FAQPage"));
 
-// rating 0 -> section testimonials omise, aucune mention de note
+// rating 0 -> pas de note affichée, la section devient une invitation honnête
 const idx0 = renderFallbackIndex(buildSiteConfig({ ...sheet, GOOGLE_RATING: "0.0", REVIEW_COUNT: "0" }, 1));
-check("fallback rating 0 -> pas de bloc avis", !idx0.includes("4.8") && !idx0.includes("reviews on Google"));
+check("fallback rating 0 -> invitation sans note", !idx0.includes("4.8</span>") && !idx0.includes("4.8/5") && !idx0.includes("See reviews on Google") && idx0.includes("Your review matters"));
 
 process.exit(fail ? 1 : 0);

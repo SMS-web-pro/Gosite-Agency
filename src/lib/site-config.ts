@@ -29,7 +29,8 @@ function slugify(s: string): string {
 
 const str = (v: string | undefined, max = 300): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
 const num = (v: string | undefined): number | null => {
-  const n = Number(str(v));
+  // « 80+ » (reviews arrondies) et « ~4.5 » se parsent proprement.
+  const n = Number(String(str(v)).replace(/[+~\s]/g, "").replace(",", "."));
   return Number.isFinite(n) && n > 0 ? n : null;
 };
 

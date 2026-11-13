@@ -15,9 +15,9 @@ const base: Record<string, string> = {
   DISPLAY_FONT: "Syne", HERO_IMAGE_URL: "https://images.unsplash.com/x", ABOUT_IMAGE_URL: "https://images.unsplash.com/y",
 };
 
-// A. SANS données réelles : rien d'inventé
+// A. SANS données réelles : rien d'inventé + invitation honnête (pas de badge G bleu)
 const noData = generateSiteHtml(base);
-check("A. pas de faux avis (google svg)", !noData.includes("4285F4"));
+check("A. invitation sans badge G bleu", noData.includes("t-invite") && !noData.includes('t-gbadge" aria-hidden="true">G'));
 check("A. pas d'aggregateRating", !noData.includes("aggregateRating"));
 check("A. pas d'horaires inventés", !noData.includes("9h00"));
 check("A. pas de 'ans de' inventé", !noData.includes("ans de<br>") && !noData.includes("ans de métier"));

@@ -78,20 +78,46 @@ export function generateSiteHtml(d: D): string {
   }).join("");
 
   // Section réputation 100% factuelle : note + nombre d'avis RÉELS, lien vers
-  // la fiche Google. Aucun témoignage inventé, aucun logo Google trompeur.
-  const publicReviewsLabel = (d.LANG || "fr").startsWith("en") ? "public reviews on Google" : "avis publics sur Google";
+  // la fiche Google. Aucun témoignage inventé, aucune note inventée. Deux
+  // variantes : (A) note réelle → carte héros avec étoiles en cascade ;
+  // (B) pas de note → invitation honnête « Écrire un avis sur Google ».
+  const isEn = (d.LANG || "fr").startsWith("en");
+  const publicReviewsLabel = isEn ? "public reviews on Google" : "avis publics sur Google";
+  // Étoiles SVG : plein = note arrondie, trait = le reste — cascade starPop.
+  const starFull = `<svg class="t-star" viewBox="0 0 24 24" width="22" height="22" fill="#FBBC04" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+  const starLine = `<svg class="t-star" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#FBBC04" stroke-width="1.6" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg>`;
+  const ratingVal = Number(d.GOOGLE_RATING) || 0;
+  const starRow = [1, 2, 3, 4, 5].map((i) => (i <= Math.round(ratingVal) ? starFull : starLine)).join("");
   const reputationHtml = hasReviews ? `
-      <div class="rep-card" data-aos="zoom-in">
-        <div class="rep-score">
-          <div class="rep-stars">★★★★★</div>
-          <div class="rep-note">${d.GOOGLE_RATING}<span>/5</span></div>
-          <div class="rep-count">${d.REVIEW_COUNT} ${publicReviewsLabel}</div>
+      <div class="t-card" data-aos="zoom-in">
+        <div class="t-head">
+          <div class="t-gbadge" aria-hidden="true">G</div>
+          <div class="t-score">
+            <div class="t-note">${d.GOOGLE_RATING}<span>/5</span></div>
+            <div class="t-stars" aria-label="${d.GOOGLE_RATING} sur 5 étoiles">${starRow}</div>
+            <div class="t-count">${d.REVIEW_COUNT} ${publicReviewsLabel}</div>
+          </div>
         </div>
-        <div class="rep-side">
-          <p>La réputation de ${name} se lit sur sa fiche Google : note moyenne de ${d.GOOGLE_RATING}/5 construite sur ${d.REVIEW_COUNT} avis publics laissés par ses clients.</p>
-          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-dark"><i data-lucide="star"></i> Lire les avis sur Google</a>
+        <p class="t-copy">La réputation de ${name} se lit sur sa fiche Google : une note moyenne de ${d.GOOGLE_RATING}/5 construite sur ${d.REVIEW_COUNT} avis publics laissés par ses clients.</p>
+        <div class="t-actions">
+          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-primary"><i data-lucide="star"></i> ${isEn ? "See reviews on Google" : "Lire les avis sur Google"}</a>
+          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-outline"><i data-lucide="pen-line"></i> ${isEn ? "Write a review" : "Écrire un avis"}</a>
         </div>
-      </div>` : "";
+        <div class="t-chips">
+          <span class="t-chip">${isEn ? "Reviews verifiable in one click" : "Avis vérifiables en un clic"}</span>
+          <span class="t-chip">${isEn ? "Rated by real customers" : "Noté par des clients réels"}</span>
+          <span class="t-chip">${isEn ? "Every client answered" : "Réponse à chaque client"}</span>
+        </div>
+      </div>` : `
+      <div class="t-card t-invite" data-aos="zoom-in">
+        <div class="t-gbadge t-gbadge-line" aria-hidden="true"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/></svg></div>
+        <div class="t-kicker">${isEn ? "Your review matters" : "Votre avis compte"}</div>
+        <h3 class="t-invite-title">${isEn ? `${name} is growing — and your feedback is part of it` : `${name} grandit — et votre avis en fait partie`}</h3>
+        <p class="t-copy">${isEn ? "We are a young business: no numbers to show off, just a service to prove. Your honest review on Google is the best way to help us get better." : "Nous sommes une jeune enseigne : pas de chiffres à brandir, un service à prouver. Votre avis honnête sur Google est la meilleure façon de nous aider à progresser."}</p>
+        <div class="t-actions">
+          <a href="${d.MAPS_LINK}" target="_blank" rel="noopener" class="btn btn-primary"><i data-lucide="pen-line"></i> ${isEn ? "Write a review on Google" : "Écrire un avis sur Google"}</a>
+        </div>
+      </div>`;
 
   const faqItems = niche.faq.slice(0, 8);
   const faqCol = (items: typeof faqItems) => items.map((f) => `
@@ -412,15 +438,29 @@ h2{font-family:var(--font-display);font-size:clamp(2rem,4.5vw,3rem);line-height:
 .gallery-info h4{font-size:1rem;font-weight:700;margin-bottom:4px}
 .gallery-info p{font-size:.8rem;opacity:.8}
 .gallery-tag{position:absolute;top:14px;${rtl ? "left" : "right"}:14px;background:rgba(255,255,255,.15);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:600;padding:4px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em}
-/* RÉPUTATION (factuelle) */
+/* RÉPUTATION (factuelle, animée) */
 .rep-wrap{display:flex;justify-content:center}
-.rep-card{display:grid;grid-template-columns:auto 1fr;gap:40px;align-items:center;background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:44px 48px;box-shadow:var(--shadow-md);max-width:860px;width:100%}
-.rep-stars{color:#F5B50A;font-size:1.3rem;letter-spacing:4px}
-.rep-note{font-family:var(--font-display);font-size:3.6rem;font-weight:700;line-height:1;margin-top:6px}
-.rep-note span{font-size:1.4rem;color:var(--text-light);font-weight:600}
-.rep-count{font-size:.9rem;color:var(--text-mid);margin-top:6px}
-.rep-side p{color:var(--text-mid);line-height:1.75;margin-bottom:20px}
-@media(max-width:768px){.rep-card{grid-template-columns:1fr;gap:24px;padding:32px 26px}}
+.t-card{background:var(--card-bg);border:1px solid var(--border);border-radius:var(--radius-lg);padding:44px 48px;box-shadow:var(--shadow-md);max-width:680px;width:100%;text-align:center;transition:var(--transition)}
+.t-card:hover{transform:translateY(-6px);box-shadow:var(--shadow-lg)}
+.t-head{display:flex;align-items:center;justify-content:center;gap:22px;margin-bottom:18px}
+.t-gbadge{width:52px;height:52px;border-radius:50%;background:#4285F4;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:1.4rem;flex-shrink:0;box-shadow:0 6px 16px rgba(66,133,244,.35)}
+.t-gbadge-line{background:none;border:1.5px solid var(--accent);color:var(--accent);box-shadow:none}
+.t-score{text-align:${rtl ? "right" : "left"}}
+.t-note{font-family:var(--font-display);font-size:2.9rem;font-weight:800;line-height:1}
+.t-note span{font-size:1.25rem;color:var(--text-light);font-weight:600}
+.t-stars{display:flex;gap:4px;margin:10px 0 6px}
+.t-star{opacity:0;transform:scale(.5);animation:starPop .45s cubic-bezier(.16,1,.3,1) forwards}
+.t-stars .t-star:nth-child(1){animation-delay:.15s}.t-stars .t-star:nth-child(2){animation-delay:.27s}.t-stars .t-star:nth-child(3){animation-delay:.39s}.t-stars .t-star:nth-child(4){animation-delay:.51s}.t-stars .t-star:nth-child(5){animation-delay:.63s}
+@keyframes starPop{to{opacity:1;transform:scale(1)}}
+.t-count{font-size:.9rem;color:var(--text-mid)}
+.t-copy{color:var(--text-mid);line-height:1.75;max-width:56ch;margin:0 auto 24px}
+.t-invite-title{font-family:var(--font-display);font-size:1.5rem;margin:10px 0 12px}
+.t-kicker{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent);font-weight:700}
+.t-actions{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;margin-bottom:22px}
+.t-chips{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+.t-chip{font-size:12px;font-weight:600;color:var(--text-mid);background:var(--neutral);border:1px solid var(--border);border-radius:999px;padding:7px 14px}
+@media(prefers-reduced-motion:reduce){.t-star{animation:none;opacity:1;transform:scale(1)}}
+@media(max-width:768px){.t-card{padding:30px 20px}.t-head{flex-direction:column;gap:14px}.t-score{text-align:center}.t-stars{justify-content:center}.t-actions .btn{width:100%;justify-content:center}}
 /* GUARANTEES */
 .guarantees-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:24px;margin-top:48px}
 .guarantee-card{background:var(--card-bg);border-radius:var(--radius-lg);padding:30px 28px;border:1px solid var(--border);border-top:4px solid var(--accent);box-shadow:var(--shadow-sm);transition:var(--transition)}
@@ -499,22 +539,48 @@ footer{background:var(--primary);color:rgba(255,255,255,.75);padding:64px 0 0}
 .modal-box p{font-size:.9rem;color:var(--text-mid);margin-bottom:12px;line-height:1.75}
 .modal-close{position:absolute;top:16px;${rtl ? "left" : "right"}:16px;background:var(--neutral);border:0;width:36px;height:36px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:var(--transition)}
 .modal-close:hover{background:var(--accent);color:#fff}
-/* RESPONSIVE */
+/* RESPONSIVE — MOBILE-FIRST STRICT */
 @media(max-width:1024px){
 }
 @media(max-width:768px){
+  .container{width:calc(100% - 32px)}
+  .section{padding:64px 0}
+  :root{--section-pad:64px}
   .nav-links{display:none}
   .burger{display:flex}
-  .about-grid{grid-template-columns:1fr;gap:60px}
+  .about-grid{grid-template-columns:1fr;gap:44px}
   .about-text{padding-${rtl ? "right" : "left"}:0}
   .about-badge-float{${rtl ? "left" : "right"}:12px}
-  .stats-grid{grid-template-columns:1fr 1fr}
+  .stats-grid{grid-template-columns:1fr 1fr;gap:14px}
   .stat-item:nth-child(2)::after{display:none}
   .gallery-grid{grid-template-columns:1fr}
+  .services-grid{grid-template-columns:1fr;gap:14px;margin-top:36px}
+  .process-grid{grid-template-columns:1fr;gap:16px}
+  .guarantees-grid{grid-template-columns:1fr;gap:14px}
   .faq-grid{grid-template-columns:1fr}
-  .contact-grid{grid-template-columns:1fr}
+  .contact-grid{grid-template-columns:1fr;gap:28px}
   .footer-grid{grid-template-columns:1fr;gap:32px}
-  .hero-content{padding:120px 0 60px}
+  .hero-content{padding:110px 0 56px;text-align:center}
+  .hero-content h1{font-size:clamp(2rem,8.5vw,2.6rem);line-height:1.14}
+  .hero-sub{font-size:1rem}
+  .hero-ctas{flex-direction:column;align-items:stretch}
+  .hero-ctas .btn{width:100%;height:50px;justify-content:center;padding:0 20px}
+  .trust-grid{gap:10px}
+  .trust-item{font-size:12px;padding:8px 0}
+  .section-sub{font-size:.98rem}
+  .btn{padding:12px 20px;font-size:15px;min-height:48px}
+  .nav-cta{padding:10px 14px;font-size:13px}
+  .contact-info-card{padding:26px 20px}
+  .mobile-menu a{font-size:1.2rem}
+  h2{font-size:clamp(1.5rem,6.5vw,2rem)}
+  .contact-info{padding:26px 20px}
+}
+@media(max-width:480px){
+  .gallery-grid{grid-template-columns:1fr 1fr;gap:10px}
+  .stats-grid{grid-template-columns:1fr 1fr}
+  .t-chips{gap:8px}
+  .t-chip{font-size:11px;padding:6px 10px}
+  .btn{padding:11px 16px}
 }
 @media(max-width:1024px) and (min-width:769px){.gallery-grid{grid-template-columns:1fr 1fr}.services-grid{grid-template-columns:1fr 1fr}}
 </style>

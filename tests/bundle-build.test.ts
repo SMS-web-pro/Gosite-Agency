@@ -62,7 +62,7 @@ const sheet: Record<string, string> = {
 // marqueurs obligatoires (validation anti-HTML-incomplet).
 const geminiOk = async (opts: { user: string }) => {
   const formAction = /FORM_ACTION.*?api\/site-form\/(\d+)/.exec(opts.user)?.[1] ?? "0";
-  const page = `<!DOCTYPE html><html><head><title>Mock</title></head><body><div class="mobile-bar" data-reveal><a href="https://gosite.digital/api/site-form/${formAction}">form</a></div><p>${"x".repeat(9000)}</p><p>FORM ${formAction}</p></body></html>`;
+  const page = `<!DOCTYPE html><html><head><title>Mock</title></head><body><div class="mobile-bar" data-reveal><a href="https://gosite.digital/api/site-form/${formAction}">form</a></div><section class="t-card" data-reveal><p>reviews</p></section><p>${"x".repeat(9000)}</p><p>FORM ${formAction}</p></body></html>`;
   return page;
 };
 
@@ -106,7 +106,7 @@ const geminiOk = async (opts: { user: string }) => {
   let prompted = "";
   const geminiEcho = async (opts: { user: string }) => {
     prompted = opts.user;
-    return `<!DOCTYPE html><html><head><title>Mock</title></head><body><div class="mobile-bar" data-reveal><a href="api/site-form/1952">f</a></div><pre>${opts.user.replace(/</g, "&lt;")}</pre><p>${"x".repeat(9000)}</p></body></html>`;
+    return `<!DOCTYPE html><html><head><title>Mock</title></head><body><div class="mobile-bar" data-reveal><a href="api/site-form/1952">f</a></div><section class="t-card" data-reveal><p>reviews</p></section><pre>${opts.user.replace(/</g, "&lt;")}</pre><p>${"x".repeat(9000)}</p></body></html>`;
   };
   const r = await buildSiteBundle(sheet, 1952, geminiEcho as never, (async () => {
     throw new Error("down");
