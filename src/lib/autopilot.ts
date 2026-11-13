@@ -153,7 +153,13 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     { stage: "deployed", agent: "saler", limit: 6, fn: contactProspect },
   ];
 
-  for (const step of steps) {
+  // Tourniquet : l'étape de départ change à chaque tick. Sinon le deadline de
+  // 45 s se consomme toujours sur les étapes amont (validator/emailor, pleines
+  // à chaque mission) et les étapes aval (coder/deployer/saler) meurent de faim.
+  const offset = Math.floor(Date.now() / 60_000) % steps.length;
+
+  for (let i = 0; i < steps.length; i++) {
+    const step = steps[(i + offset) % steps.length];
     if (Date.now() > deadline) { summary.deadlineReached = true; break; }
     if (!(await agentUsable(step.agent, cache))) continue;
     const batch = await take(step.stage, step.limit);
