@@ -7,16 +7,21 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 async function authorized(req: NextRequest): Promise<boolean> {
-  // Deux canaux d'authentification, même secret :
-  // 1) Vercel Cron : "Authorization: Bearer $CRON_SECRET" (configuré côté Vercel).
-  // 2) Moniteurs externes (cron-job.org, UptimeRobot, etc.) qui ne peuvent pas
-  //    envoyer de header : "GET /api/cron/tick?key=$CRON_SECRET".
+  // Trois canaux d'authentification, le secret peut venir de DEUX sources :
+  // 1) Vercel Cron : "Authorization: Bearer $CRON_SECRET" (var d'env Vercel).
+  // 2) Moniteurs externes (cron-job.org, UptimeRobot) : "GET …?key=$CRON_SECRET".
+  // 3) Le secret peut être régénéré dans Réglages (DB) : les deux valeurs sont
+  //    acceptées — sinon la régénération coupe le moniteur externe en 401 et
+  //    le pipeline automatique s'arrête sans warning.
   // Pas de raccourci x-vercel-cron : ce header est forgeable.
-  const secret = process.env.CRON_SECRET || (await getSetting("CRON_SECRET")) || "";
-  if (!secret) return process.env.NODE_ENV !== "production"; // dev local seulement
-  if (req.headers.get("authorization") === `Bearer ${secret}`) return true;
+  const candidates = new Set(
+    [process.env.CRON_SECRET, await getSetting("CRON_SECRET")].filter((v): v is string => Boolean(v?.trim())),
+  );
+  if (candidates.size === 0) return process.env.NODE_ENV !== "production"; // dev local seulement
+  const auth = req.headers.get("authorization");
+  if (auth && [...candidates].some((s) => auth === `Bearer ${s}`)) return true;
   const urlKey = req.nextUrl.searchParams.get("key");
-  return Boolean(urlKey) && urlKey === secret;
+  return Boolean(urlKey) && candidates.has(urlKey);
 }
 
 export async function GET(req: NextRequest) {
