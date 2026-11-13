@@ -28,7 +28,10 @@ export type TickSummary = {
 };
 
 const TICK_LOCK_KEY = "TICK_LOCK";
-const TICK_LOCK_STALE_MS = 10 * 60_000; // un tick planté libère le verrou après 10 min
+// Un tick dure au plus 60 s (kill Vercel Hobby). 90 s de grace suffit : si le
+// process est tué avant release, le verrou bloque les doublons ~1,5 min au lieu
+// de 10 min — sinon un tick tué sur un step LLM lent gelait le pipeline 10 min.
+const TICK_LOCK_STALE_MS = 90_000;
 // Budget du tick : Vercel Hobby = 60 s max par fonction. On s'arrête à 45 s
 // pour garder la marge (réponse + libération du lease) avant le kill.
 const TICK_DEADLINE_MS = 45_000;

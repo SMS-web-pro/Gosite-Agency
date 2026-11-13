@@ -2,7 +2,9 @@ name: Autopilot tick
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # Toutes les 5 min : le moniteur externe (cron-job.org) n'est pas fiable.
+    # GitHub Actions retarde parfois le cron de quelques minutes — suffisant.
+    - cron: "*/5 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -12,5 +14,4 @@ jobs:
       - name: Trigger /api/cron/tick
         run: |
           curl -fsS --max-time 280 \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            "https://gosite-agency.vercel.app/api/cron/tick"
+            "https://gosite.digital/api/cron/tick?key=${{ secrets.TICK_SECRET }}"
