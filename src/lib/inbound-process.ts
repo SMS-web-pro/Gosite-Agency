@@ -4,6 +4,7 @@
 // (réconciliation des rows "new" échouées). Idempotent par status + attempts.
 import { db } from "@/db";
 import { inboundEmails, emails, prospects } from "@/db/schema";
+import { prospectLightColumns } from "@/db/light";
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import {
   extractNewText,
@@ -46,19 +47,19 @@ async function findProspect(row: InboundRow): Promise<Prospect | null> {
       .where(sql`${emails.messageId} IS NOT NULL AND ${emails.prospectId} IS NOT NULL`);
     const hit = out.find((e) => e.messageId && normalizeMessageIds(e.messageId).some((m) => ids.includes(m)));
     if (hit?.prospectId) {
-      const p = await db.select().from(prospects).where(eq(prospects.id, hit.prospectId)).limit(1);
-      if (p[0]) return p[0];
+      const p = await db.select(prospectLightColumns).from(prospects).where(eq(prospects.id, hit.prospectId)).limit(1);
+      if (p[0]) return p[0] as unknown as Prospect;
     }
   }
   // 2) Adresse From = email du prospect (insensible à la casse).
   const norm = normalizeEmail(row.fromEmail);
   if (!norm) return null;
   const byEmail = await db
-    .select()
+    .select(prospectLightColumns)
     .from(prospects)
     .where(sql`lower(${prospects.email}) = ${norm}`)
     .limit(1);
-  return byEmail[0] ?? null;
+  return (byEmail[0] as unknown as Prospect) ?? null;
 }
 
 function langFor(p: Prospect): "fr" | "en" {

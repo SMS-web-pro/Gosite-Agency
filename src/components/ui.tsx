@@ -52,12 +52,21 @@ export function useApi<T>(url: string, intervalMs = 0): { data: T | null; reload
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const alive = useRef(true);
+  const inFlight = useRef(false);
   const load = async () => {
+    // Une seule requête en vol à la fois : sinon un endpoint lent (ou bloqué)
+    // voit les polls s'empiler (setInterval) et sature le serveur.
+    if (inFlight.current) return;
+    inFlight.current = true;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20000);
     try {
-      const r = await fetch(url, { cache: "no-store" });
+      const r = await fetch(url, { cache: "no-store", signal: ctrl.signal });
       const j = await apiJson<T>(r);
       if (j !== null && alive.current !== false) setData(j);
     } catch { /* noop */ } finally {
+      clearTimeout(timer);
+      inFlight.current = false;
       setLoading(false);
     }
   };

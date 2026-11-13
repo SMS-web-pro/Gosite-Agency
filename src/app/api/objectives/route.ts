@@ -1,31 +1,33 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/db";
 import { objectives, prospects } from "@/db/schema";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, count, eq, isNotNull, ne } from "drizzle-orm";
 import { ensureAgentsSeeded } from "@/lib/agents";
 import { logActivity } from "@/lib/activity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function progressFor(metric: string, all: (typeof prospects.$inferSelect)[]): number {
-  switch (metric) {
-    case "leads": return all.length;
-    case "qualified": return all.filter((p) => p.stage !== "discovered" && p.stage !== "rejected").length;
-    case "deployed": return all.filter((p) => p.deployedUrl).length;
-    case "contacted": return all.filter((p) => p.contactedAt).length;
-    default: return all.filter((p) => p.paymentStatus === "paid").length;
-  }
-}
-
 export async function GET() {
   await ensureAgentsSeeded();
-  const [rows, all] = await Promise.all([
+  // Compteurs en SQL : le select complet des prospects pesait ~18 Mo (bundles).
+  const [rows, [leadsRow], [qualRow], [depRow], [conRow], [payRow]] = await Promise.all([
     db.select().from(objectives).orderBy(asc(objectives.createdAt)),
-    db.select().from(prospects),
+    db.select({ n: count() }).from(prospects),
+    db.select({ n: count() }).from(prospects).where(and(ne(prospects.stage, "discovered"), ne(prospects.stage, "rejected"))),
+    db.select({ n: count() }).from(prospects).where(isNotNull(prospects.deployedUrl)),
+    db.select({ n: count() }).from(prospects).where(isNotNull(prospects.contactedAt)),
+    db.select({ n: count() }).from(prospects).where(eq(prospects.paymentStatus, "paid")),
   ]);
+  const metrics: Record<string, number> = {
+    leads: leadsRow?.n ?? 0,
+    qualified: qualRow?.n ?? 0,
+    deployed: depRow?.n ?? 0,
+    contacted: conRow?.n ?? 0,
+    paid: payRow?.n ?? 0,
+  };
   return NextResponse.json({
-    objectives: rows.map((o) => ({ ...o, progress: progressFor(o.metric, all) })),
+    objectives: rows.map((o) => ({ ...o, progress: metrics[o.metric] ?? 0 })),
   });
 }
 

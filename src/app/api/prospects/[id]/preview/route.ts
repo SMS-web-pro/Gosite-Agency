@@ -9,7 +9,12 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
-  const rows = await db.select().from(prospects).where(eq(prospects.id, Number(id))).limit(1);
+  // Projection ciblée : le select complet chargeait le bundle (~2.7 Mo) pour rien.
+  const rows = await db
+    .select({ siteHtml: prospects.siteHtml })
+    .from(prospects)
+    .where(eq(prospects.id, Number(id)))
+    .limit(1);
   const p = rows[0];
   if (!p?.siteHtml) {
     return new Response("<h1 style='font-family:sans-serif;padding:40px'>Site pas encore généré pour ce lead.</h1>", {

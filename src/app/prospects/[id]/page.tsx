@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Loader2, Zap, ExternalLink, Monitor, Smartphone, Copy, Check,
@@ -20,7 +20,7 @@ type ProspectDetail = {
   address: string | null; city: string | null; zip: string | null; country: string | null;
   rating: string | null; reviewCount: number | null; hasWebsite: boolean; websiteUrl: string | null;
   mapsLink: string | null; lat: string | null; lng: string | null; stage: string; rejectReason: string | null;
-  clientData: Record<string, string> | null; hasSite: boolean; siteSize: number; siteSlug: string | null;
+  clientData: Record<string, string> | null; hasSite: boolean; hasBundle?: boolean; siteSlug: string | null;
   deployedUrl: string | null; deployStatus: string; paymentUrl: string | null; paymentStatus: string;
   domainUrl: string | null; source: string; searchQuery: string | null; createdAt: string;
   salesEmailId: string | null; contactedAt: string | null;
@@ -83,12 +83,12 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
 
   const p = data?.prospect;
 
-  const loadNotes = async () => {
+  const loadNotes = useCallback(async () => {
     const r = await fetch(`/api/prospects/${id}/notes`);
     const j = await apiJson<{ notes?: { id: number; author: string; body: string; createdAt: string }[] }>(r);
     if (j?.notes) setNotes(j.notes);
-  };
-  useEffect(() => { loadNotes(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
+  }, [id]);
+  useEffect(() => { void loadNotes(); }, [loadNotes]);
 
   const addNote = async () => {
     if (!noteText.trim()) return;
@@ -110,9 +110,9 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
       const r = await fetch(`/api/prospects/${id}/advance`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
-      const j = await apiJson<{ ok?: boolean; url?: string; engine?: string; reason?: string; error?: string }>(r);
+      const j = await apiJson<{ ok?: boolean; partial?: boolean; url?: string; engine?: string; reason?: string; error?: string }>(r);
       if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
-        if (j.ok) setToast({ msg: `${label} : succès.${j.url ? ` → ${j.url}` : ""}${j.engine ? ` (moteur ${j.engine === "gemini" ? "Gemini" : j.engine === "llm" ? "LLM omniroute" : "gabarit interne"})` : ""}`, kind: "ok" });
+        if (j.ok) setToast({ msg: j.partial ? `${label} : en cours — le lead continue automatiquement au prochain cycle.` : `${label} : succès.${j.url ? ` → ${j.url}` : ""}${j.engine ? ` (moteur ${j.engine === "gemini" ? "Gemini" : j.engine === "llm" ? "LLM omniroute" : "gabarit interne"})` : ""}`, kind: "ok" });
       else setToast({ msg: j.reason ?? j.error ?? `${label} : avertissement.`, kind: "err" });
       await reload();
     } finally {
@@ -357,7 +357,7 @@ export default function ProspectPage({ params }: { params: Promise<{ id: string 
         <div className="flex flex-wrap items-center gap-3 px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
           <Monitor size={16} style={{ color: "var(--pink)" }} />
           <span className="font-display font-bold text-[15px] text-white">Site généré par Coder</span>
-          {p.hasSite && <span className="chip font-mono" style={{ color: "var(--text-faint)" }}>{(p.siteSize / 1024).toFixed(0)} Ko · {p.siteSlug}</span>}
+          {p.hasSite && <span className="chip font-mono" style={{ color: "var(--text-faint)" }}>{p.hasBundle ? "bundle v6 · " : ""}{p.siteSlug}</span>}
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             <button className={`btn-ghost !py-1.5 !px-3 !text-[11px] ${device === "desktop" ? "!border-accent" : ""}`} style={device === "desktop" ? { color: "var(--accent)", borderColor: "rgba(0,229,160,.4)" } : {}} onClick={() => setDevice("desktop")}>
               <Monitor size={12} /> Desktop

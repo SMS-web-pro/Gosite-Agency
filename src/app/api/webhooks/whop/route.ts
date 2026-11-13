@@ -27,7 +27,11 @@ export async function POST(req: NextRequest) {
   const id = Number(meta.prospect_id ?? NaN);
   if (!id) return NextResponse.json({ ok: true, ignored: "no prospect_id in metadata" });
 
-  const rows = await db.select().from(prospects).where(eq(prospects.id, id)).limit(1);
+  const rows = await db
+    .select({ id: prospects.id, businessName: prospects.businessName, stage: prospects.stage })
+    .from(prospects)
+    .where(eq(prospects.id, id))
+    .limit(1);
   const p = rows[0];
   if (!p) return NextResponse.json({ error: "lead introuvable" }, { status: 404 });
 

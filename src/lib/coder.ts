@@ -212,8 +212,8 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
       user: `${user}\n\n${kickoff}`,
       maxTokens: 65536,
       temperature: 0.55,
-      timeoutMs: 180_000,
-      deadlineMs: 250_000,
+      timeoutMs: 40_000,
+      deadlineMs: 48_000,
     });
     const elapsed = Date.now() - g0;
     if (raw) {
@@ -222,7 +222,7 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
     }
     // Cerveau omniroute uniquement si le temps le permet : un 2e moteur mort
     // ne doit jamais détruire la garantie template (route plafonnée à 300 s).
-    if (useLlm && elapsed < 90_000) {
+    if (useLlm && elapsed < 25_000) {
       // Le cerveau partagé injecte les skills et apprentissages de Coder
       const { agentThink } = await import("./agent-brain");
       const raw =
@@ -235,7 +235,7 @@ export async function buildSite(clientData: Record<string, string>): Promise<Bui
           maxTokens: 16000,
           temperature: 0.6,
         })) ??
-        (await chatCompletion({ system: goldenPrompt(lang), user, maxTokens: 16000, temperature: 0.6, timeoutMs: 70_000 }));
+        (await chatCompletion({ system: goldenPrompt(lang), user, maxTokens: 16000, temperature: 0.6, timeoutMs: 35_000 }));
 
       if (raw) {
         const html = extractHtml(raw);
@@ -325,8 +325,8 @@ export async function buildSiteBundle(
       user: `${userPromptFor(s6, lang)}\n\n${kickoff}`,
       maxTokens: 65536,
       temperature: 0.55,
-      timeoutMs: 180_000,
-      deadlineMs: 250_000,
+      timeoutMs: 40_000,
+      deadlineMs: 48_000,
     });
     if (raw) {
       const extracted = extractHtml(raw);

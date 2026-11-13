@@ -11,15 +11,63 @@ import { logActivity } from "@/lib/activity";
 import { notifyTelegram } from "@/lib/telegram";
 
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function POST(req: NextRequest, ctx: Ctx) {
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as { action?: string; domain?: string };
-  const rows = await db.select().from(prospects).where(eq(prospects.id, Number(id))).limit(1);
-  const p = rows[0];
+  // Le bundle v6 pèse ~2.7 Mo par lead : on ne le charge que pour les étapes
+  // qui en ont besoin (build et deploy lisent le site existant).
+  const needsBundle = body.action === "build" || body.action === "deploy" || body.action === "full" || !body.action;
+  const rows = needsBundle
+    ? await db.select().from(prospects).where(eq(prospects.id, Number(id))).limit(1)
+    : await db
+        .select({
+          id: prospects.id,
+          businessName: prospects.businessName,
+          businessType: prospects.businessType,
+          tagline: prospects.tagline,
+          description: prospects.description,
+          phone: prospects.phone,
+          email: prospects.email,
+          emailStatus: prospects.emailStatus,
+          emailDetail: prospects.emailDetail,
+          address: prospects.address,
+          city: prospects.city,
+          zip: prospects.zip,
+          country: prospects.country,
+          rating: prospects.rating,
+          reviewCount: prospects.reviewCount,
+          hasWebsite: prospects.hasWebsite,
+          websiteUrl: prospects.websiteUrl,
+          mapsLink: prospects.mapsLink,
+          lat: prospects.lat,
+          lng: prospects.lng,
+          source: prospects.source,
+          stage: prospects.stage,
+          rejectReason: prospects.rejectReason,
+          clientData: prospects.clientData,
+          siteSlug: prospects.siteSlug,
+          deployedUrl: prospects.deployedUrl,
+          deployStatus: prospects.deployStatus,
+          salesEmailId: prospects.salesEmailId,
+          contactedAt: prospects.contactedAt,
+          paymentUrl: prospects.paymentUrl,
+          paymentStatus: prospects.paymentStatus,
+          domainUrl: prospects.domainUrl,
+          searchQuery: prospects.searchQuery,
+          aiScore: prospects.aiScore,
+          aiInsight: prospects.aiInsight,
+          failCount: prospects.failCount,
+          createdAt: prospects.createdAt,
+          updatedAt: prospects.updatedAt,
+        })
+        .from(prospects)
+        .where(eq(prospects.id, Number(id)))
+        .limit(1);
+  const p = rows[0] as typeof prospects.$inferSelect | undefined;
   if (!p) return NextResponse.json({ error: "Lead introuvable" }, { status: 404 });
 
   try {
@@ -65,6 +113,11 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       case "full":
       default: {
         const r = await runFullPipeline(p, { telegram: true });
+        // "partial" = le budget de 45 s est atteint : le lead continue au tick
+        // suivant (chaque étape est déjà persistée en base).
+        if (r.ok && r.partial) {
+          return NextResponse.json({ ok: true, partial: true, stage: r.stage, error: "Pipeline en cours — le lead continue automatiquement au prochain cycle." });
+        }
         return NextResponse.json(r);
       }
     }

@@ -210,7 +210,7 @@ FORMAT DE SORTIE IMPÉRATIF :
           // (dont omniroute) corrompent la sortie avec ce paramètre.
         }),
       },
-      { timeoutMs: 90000, retries: 1, delayMs: 800 }
+      { timeoutMs: 18_000, retries: 1, delayMs: 800 }
     );
     if (!res.ok) {
       await trackCall(params.agent, params.task, false, Date.now() - t0, 0);

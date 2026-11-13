@@ -21,7 +21,7 @@ export type ProspectRow = {
   emailStatus: string; city: string | null; country: string | null; rating: string | null;
   reviewCount: number | null; hasWebsite: boolean; stage: string; rejectReason: string | null;
   deployedUrl: string | null; deployStatus: string; paymentStatus: string; source: string;
-  searchQuery: string | null; createdAt: string; hasSite: boolean; contacteAt?: string | null;
+  searchQuery: string | null; createdAt: string; hasSite: boolean; contactedAt?: string | null;
   aiScore?: number | null; aiInsight?: string | null;
 };
 export type ActivityRow = {
@@ -66,7 +66,7 @@ function timeAgo(iso: string) {
 }
 
 export default function Dashboard() {
-  const { data, reload } = useApi<StatsPayload>("/api/stats", 5000);
+  const { data, reload } = useApi<StatsPayload>("/api/stats", 8000);
   const [niche, setNiche] = useState("barbershop");
   const [city, setCity] = useState("Casablanca");
   const [strategy, setStrategy] = useState<"swarm" | "precise">("swarm");
@@ -88,7 +88,7 @@ export default function Dashboard() {
       fetch("/api/autopilot", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "tick" }) }).catch(() => {});
     }, 300_000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [data?.autopilot]);
 
   const launchMission = async () => {

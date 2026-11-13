@@ -41,9 +41,11 @@ const okRes = (bytes: ArrayBuffer) => new Response(bytes, { status: 200, headers
   check("succes: base64 décode", Buffer.from(r.files["images/hero.jpg"] ?? "", "base64").length === 15360);
 }
 
-// 2. Échec réseau 2x sur hero → hero null, pas de fichier, pas d'URL externe
+// 2. Échec réseau sur hero → hero null, pas de fichier, pas d'URL externe
 {
+  let calls = 0;
   const fetchImpl = async () => {
+    calls++;
     throw new Error("boom");
   };
   const r = await downloadImages(
@@ -57,6 +59,30 @@ const okRes = (bytes: ArrayBuffer) => new Response(bytes, { status: 200, headers
   check("echec: pas de hero.jpg", !r.files["images/hero.jpg"]);
   check("echec: gallery null", r.gallery.length === 0);
   check("echec: aucune clé contenant http", !Object.keys(r.files).some((k) => k.includes("http")));
+  check("echec: une seule tentative par image", calls === 2);
+}
+
+// 2b. Unsplash : URL transformée (taille/qualité) pour ne pas embarquer 450 Ko
+{
+  const calls: string[] = [];
+  const fetchImpl = async (url: string | URL) => {
+    calls.push(String(url));
+    return okRes(JPEG_15K);
+  };
+  await downloadImages([{ slot: "hero", url: "https://images.unsplash.com/photo-123?w=1920&q=80" }], fetchImpl as typeof fetch);
+  const u = new URL(calls[0]);
+  check("unsplash: largeur 1400", u.searchParams.get("w") === "1400");
+  check("unsplash: qualite 72", u.searchParams.get("q") === "72");
+  check("unsplash: format jpg", u.searchParams.get("fm") === "jpg");
+}
+
+// 2c. Image trop lourde (> 4 Mo) → rejetée
+{
+  const huge = Buffer.alloc(5 * 1024 * 1024, 9).buffer as ArrayBuffer;
+  const fetchImpl = async () => new Response(huge, { status: 200, headers: { "content-type": "image/jpeg" } });
+  const r = await downloadImages([{ slot: "hero", url: "https://img.example/huge.jpg" }], fetchImpl as typeof fetch);
+  check("lourd: hero null", r.hero === null);
+  check("lourd: pas de fichier", !r.files["images/hero.jpg"]);
 }
 
 // 3. Trop petit (< 10 Ko) → rejeté

@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { runScoutMission, runBulkValidation } from "@/lib/pipeline";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {

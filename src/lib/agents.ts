@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { agents } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 export const AGENT_DEFINITIONS = [
   {
@@ -107,13 +107,31 @@ export const AGENT_DEFINITIONS = [
 
 export type AgentKey = (typeof AGENT_DEFINITIONS)[number]["key"];
 
+// Seeding mémoïsé par instance : le layout racine ET /api/stats (poll 7 s)
+// l'appelaient sans garde → DDL + 9 selects séquentiels à chaque requête.
+const globalForAgents = globalThis as typeof globalThis & {
+  __gositeAgentsSeeded?: Promise<void>;
+};
+
 export async function ensureAgentsSeeded() {
+  if (globalForAgents.__gositeAgentsSeeded) return globalForAgents.__gositeAgentsSeeded;
+  globalForAgents.__gositeAgentsSeeded = seedAgents().catch((err) => {
+    globalForAgents.__gositeAgentsSeeded = undefined;
+    throw err;
+  });
+  return globalForAgents.__gositeAgentsSeeded;
+}
+
+async function seedAgents() {
   const { ensureSchema } = await import("@/db/bootstrap");
   await ensureSchema();
-  for (const def of AGENT_DEFINITIONS) {
-    const existing = await db.select().from(agents).where(eq(agents.key, def.key)).limit(1);
-    if (existing.length === 0) {
-      await db.insert(agents).values({
+  const keys = AGENT_DEFINITIONS.map((d) => d.key);
+  const existing = await db.select({ key: agents.key }).from(agents).where(inArray(agents.key, keys));
+  const have = new Set(existing.map((r) => r.key));
+  const missing = AGENT_DEFINITIONS.filter((d) => !have.has(d.key));
+  if (missing.length > 0) {
+    await db.insert(agents).values(
+      missing.map((def) => ({
         key: def.key,
         name: def.name,
         roleTitle: def.roleTitle,
@@ -122,8 +140,8 @@ export async function ensureAgentsSeeded() {
         color: def.color,
         sortOrder: def.sortOrder,
         status: "ready",
-      });
-    }
+      })),
+    );
   }
 }
 

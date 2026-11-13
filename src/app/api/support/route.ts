@@ -8,7 +8,7 @@ import { markAgentRunEnd, markAgentRunStart } from "@/lib/agents";
 import { addDoNotContact, looksLikeOptOut } from "@/lib/dnc";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { prospectId?: number; question?: string; email?: string };
@@ -31,7 +31,24 @@ export async function POST(req: NextRequest) {
   await markAgentRunStart("support");
   let p = null;
   if (body.prospectId) {
-    const rows = await db.select().from(prospects).where(eq(prospects.id, body.prospectId)).limit(1);
+    // Projection légère : le select complet chargeait le bundle (~2.7 Mo).
+    const rows = await db
+      .select({
+        id: prospects.id,
+        businessName: prospects.businessName,
+        businessType: prospects.businessType,
+        city: prospects.city,
+        stage: prospects.stage,
+        deployedUrl: prospects.deployedUrl,
+        paymentStatus: prospects.paymentStatus,
+        aiInsight: prospects.aiInsight,
+        email: prospects.email,
+        country: prospects.country,
+        clientData: prospects.clientData,
+      })
+      .from(prospects)
+      .where(eq(prospects.id, body.prospectId))
+      .limit(1);
     p = rows[0] ?? null;
   }
 

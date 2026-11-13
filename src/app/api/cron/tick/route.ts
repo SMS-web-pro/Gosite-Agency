@@ -4,7 +4,7 @@ import { getSetting } from "@/lib/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 async function authorized(req: NextRequest): Promise<boolean> {
   // Deux canaux d'authentification, même secret :

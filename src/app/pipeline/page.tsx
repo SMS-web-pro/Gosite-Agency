@@ -60,10 +60,10 @@ function Board() {
       const r = await fetch(`/api/prospects/${id}/advance`, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }),
       });
-      const j = await apiJson<{ ok?: boolean; reason?: string; error?: string }>(r);
+      const j = await apiJson<{ ok?: boolean; partial?: boolean; reason?: string; error?: string }>(r);
       if (!j) { setToast({ msg: "Serveur momentanément indisponible — réessaie.", kind: "err" }); return; }
-      if (j.ok) setToast({ msg: `${label} — succès pour le lead #${id}.`, kind: "ok" });
-      else setToast({ msg: j.reason ?? j.error ?? `Étape "${label}" terminée avec avertissement.`, kind: j.reason ? "err" : "err" });
+      if (j.ok) setToast({ msg: j.partial ? `${label} — en cours, le lead continue automatiquement.` : `${label} — succès pour le lead #${id}.`, kind: "ok" });
+      else setToast({ msg: j.reason ?? j.error ?? `Étape "${label}" terminée avec avertissement.`, kind: "err" });
       await reload();
     } finally {
       setBusy(null);

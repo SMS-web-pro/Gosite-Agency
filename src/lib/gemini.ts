@@ -11,7 +11,7 @@ import { nextPacificMidnight, parseKeys, pickKeyOrder, type QuarantineMap } from
 const DEFAULT_MODEL = "gemini-3.6-flash";
 const LADDER_FALLBACKS = ["gemini-3.6-flash", "gemini-3.5-flash-lite"];
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
-const CALL_TIMEOUT_MS = 150_000;
+const CALL_TIMEOUT_MS = 40_000;
 const QUARANTINE_SOFT_MS = 60_000;      // 5xx / réseau : îlot court
 const QUARANTINE_BAD_MS = 24 * 3_600_000; // clé invalide / erreur métier : îlot long
 
@@ -193,7 +193,7 @@ export async function testGeminiKeys(): Promise<{ label: string; ok: boolean; in
     const r = await callModel(key, model, "Tu t'appelles TestBot. Réponds très brièvement.", "Réponds exactement : OK", {
       maxOutputTokens: 512,
       temperature: 0,
-      timeoutMs: 120_000,
+      timeoutMs: 20_000,
     });
     if (!("text" in r) && r.status === 503) {
       return {

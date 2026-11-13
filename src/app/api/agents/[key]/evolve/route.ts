@@ -5,7 +5,7 @@ import { notifyTelegram } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 180;
+export const maxDuration = 60;
 
 type Ctx = { params: Promise<{ key: string }> };
 

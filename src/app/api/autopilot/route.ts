@@ -3,7 +3,7 @@ import { runAutopilotTick } from "@/lib/autopilot";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 // Déclenché depuis le tableau de bord RIO (pas de secret : console interne)
 export async function POST(req: NextRequest) {

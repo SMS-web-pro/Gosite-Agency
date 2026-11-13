@@ -64,7 +64,12 @@ export async function runScoutMission(
     }
     let inserted = 0;
     let duplicates = 0;
+    let skippedWithSite = 0;
     for (const place of result.places) {
+      // Ciblage : l'agence vend des sites AUX businesses qui n'en ont pas.
+      // Un commerce avec un site existant partira de toute façon à la
+      // poubelle (Validator) — inutile de le stocker et de le traiter.
+      if (place.hasWebsite) { skippedWithSite++; continue; }
       const existing = await db
         .select({ id: prospects.id })
         .from(prospects)
@@ -99,7 +104,7 @@ export async function runScoutMission(
     await logActivity({
       agentKey: "prospector", action: "mission_terminee",
       message:
-        `${inserted} nouveaux leads importés (${duplicates} doublons ignorés) — mode ${result.mode === "live" ? "Serper LIVE" : "simulation"}` +
+        `${inserted} nouveaux leads importés (${duplicates} doublons ignorés, ${skippedWithSite} avec site existant écartés) — mode ${result.mode === "live" ? "Serper LIVE" : "simulation"}` +
         (result.creditsSpent ? ` · ${result.creditsSpent} crédit(s) consommé(s)` : "") +
         (perQuery ? ` · requêtes : ${perQuery}` : ""),
       level: "success",
@@ -108,12 +113,12 @@ export async function runScoutMission(
     if (opts.telegram) {
       await notifyTelegram(
         `🔍 <b>Prospector</b> — "${niche}" à ${city}\n` +
-          `${inserted} nouveaux leads · ${duplicates} doublons` +
+          `${inserted} nouveaux leads · ${duplicates} doublons · ${skippedWithSite} avec site (écartés)` +
           (result.queries?.length ? `\n${result.queries.map((q) => `• «${q.query}» → ${q.kept} fiches`).join("\n")}` : "") +
           (result.rotated ? `\n♻️ Rotation de compte effectuée` : ""),
       );
     }
-    return { inserted, duplicates, mode: result.mode, rotated: result.rotated, places: result.places, queries: result.queries, creditsSpent: result.creditsSpent, reasoning: result.reasoning };
+    return { inserted, duplicates, skippedWithSite, mode: result.mode, rotated: result.rotated, places: result.places, queries: result.queries, creditsSpent: result.creditsSpent, reasoning: result.reasoning };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Erreur inconnue";
     if (!msg.startsWith("BLOCKED:")) {
@@ -224,10 +229,51 @@ export async function validateProspect(p: Prospect): Promise<{ ok: boolean; reas
 
 export async function runBulkValidation() {
   await ensureAgentsSeeded();
-  const pending = await db.select().from(prospects).where(eq(prospects.stage, "discovered")).orderBy(desc(prospects.createdAt)).limit(50);
+  // Projection légère : un lead « discovered » n'a pas de bundle, mais le
+  // select complet le chargerait s'il en avait un (2.7 Mo).
+  const pending = await db
+    .select({
+      id: prospects.id,
+      businessName: prospects.businessName,
+      businessType: prospects.businessType,
+      phone: prospects.phone,
+      email: prospects.email,
+      emailStatus: prospects.emailStatus,
+      emailDetail: prospects.emailDetail,
+      address: prospects.address,
+      city: prospects.city,
+      zip: prospects.zip,
+      country: prospects.country,
+      rating: prospects.rating,
+      reviewCount: prospects.reviewCount,
+      hasWebsite: prospects.hasWebsite,
+      websiteUrl: prospects.websiteUrl,
+      mapsLink: prospects.mapsLink,
+      lat: prospects.lat,
+      lng: prospects.lng,
+      hours: prospects.hours,
+      source: prospects.source,
+      stage: prospects.stage,
+      rejectReason: prospects.rejectReason,
+      clientData: prospects.clientData,
+      siteSlug: prospects.siteSlug,
+      deployedUrl: prospects.deployedUrl,
+      deployStatus: prospects.deployStatus,
+      paymentStatus: prospects.paymentStatus,
+      searchQuery: prospects.searchQuery,
+      aiScore: prospects.aiScore,
+      aiInsight: prospects.aiInsight,
+      failCount: prospects.failCount,
+      createdAt: prospects.createdAt,
+      updatedAt: prospects.updatedAt,
+    })
+    .from(prospects)
+    .where(eq(prospects.stage, "discovered"))
+    .orderBy(desc(prospects.createdAt))
+    .limit(50);
   let validated = 0, rejected = 0;
   for (const p of pending) {
-    const r = await validateProspect(p);
+    const r = await validateProspect(p as unknown as Prospect);
     r.ok ? validated++ : rejected++;
   }
   return { checked: pending.length, validated, rejected };
@@ -740,14 +786,50 @@ export async function linkProspectDomain(p: Prospect, customDomain?: string) {
 }
 
 // ─────────────────────────── AUTO-PILOT ───────────────────────────
-export async function runFullPipeline(p: Prospect, opts: { telegram?: boolean } = {}) {
+export async function runFullPipeline(p: Prospect, opts: { telegram?: boolean; budgetMs?: number } = {}) {
   await ensureAgentsSeeded();
   let current: Prospect = { ...p };
-  const reload = async () => {
-    const rows = await db.select().from(prospects).where(eq(prospects.id, p.id)).limit(1);
-    current = rows[0] ?? current;
+  const reload = async (withBundle = false) => {
+    // Rechargement LÉGER par défaut : le bundle v6 (~2.7 Mo) n'est utile
+    // qu'à l'étape deploy, qui le demande explicitement.
+    if (withBundle) {
+      const rows = await db.select().from(prospects).where(eq(prospects.id, p.id)).limit(1);
+      current = rows[0] ?? current;
+      return current;
+    }
+    const rows = await db
+      .select({
+        id: prospects.id,
+        businessName: prospects.businessName,
+        businessType: prospects.businessType,
+        city: prospects.city,
+        country: prospects.country,
+        email: prospects.email,
+        emailStatus: prospects.emailStatus,
+        stage: prospects.stage,
+        siteSlug: prospects.siteSlug,
+        deployedUrl: prospects.deployedUrl,
+        deployStatus: prospects.deployStatus,
+        paymentStatus: prospects.paymentStatus,
+        clientData: prospects.clientData,
+        hasWebsite: prospects.hasWebsite,
+        websiteUrl: prospects.websiteUrl,
+        phone: prospects.phone,
+        rating: prospects.rating,
+        reviewCount: prospects.reviewCount,
+        rejectReason: prospects.rejectReason,
+        failCount: prospects.failCount,
+      })
+      .from(prospects)
+      .where(eq(prospects.id, p.id))
+      .limit(1);
+    current = (rows[0] as unknown as Prospect) ?? current;
     return current;
   };
+  // Budget d'horloge murale : Vercel Hobby tue la fonction à 60 s. Chaque étape
+  // persiste son avancement en base → le tick suivant reprend où on s'est arrêté
+  // (aucun travail perdu, aucun double envoi).
+  const deadline = Date.now() + (opts.budgetMs ?? 45_000);
   try {
     if (stageRank(current.stage) < stageRank("validated")) {
       const r = await validateProspect(current);
@@ -760,9 +842,18 @@ export async function runFullPipeline(p: Prospect, opts: { telegram?: boolean } 
       await reload();
     }
     if (current.stage === "email_verified") { await mapProspect(current); await reload(); }
-    if (current.stage === "mapped") { await buildProspectSite(current); await reload(); }
-    if (current.stage === "site_built") { await deployProspectSite(current); await reload(); }
-    if (current.stage === "deployed") { await contactProspect(current); await reload(); }
+    if (current.stage === "mapped") {
+      if (Date.now() > deadline) return { ok: true as const, partial: true, stage: current.stage };
+      await buildProspectSite(current); await reload(true);
+    }
+    if (current.stage === "site_built") {
+      if (Date.now() > deadline) return { ok: true as const, partial: true, stage: current.stage };
+      await deployProspectSite(current); await reload();
+    }
+    if (current.stage === "deployed") {
+      if (Date.now() > deadline) return { ok: true as const, partial: true, stage: current.stage };
+      await contactProspect(current); await reload();
+    }
     return { ok: true as const, stage: current.stage, deployedUrl: current.deployedUrl ?? undefined };
   } catch (err) {
     await reload();

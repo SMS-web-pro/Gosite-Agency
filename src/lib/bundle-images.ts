@@ -13,14 +13,31 @@ export type LocalImages = {
 };
 
 const MIN_BYTES = 10 * 1024; // < 10 Ko = pas une vraie photo
-const TIMEOUT_MS = 12_000;
-const ATTEMPTS = 2;
+const MAX_BYTES = 4 * 1024 * 1024; // > 4 Mo = image anormale (saturerait le bundle)
+// Budget temps : 6 slots par paquets de 3 → 2 paquets. À 7 s max par image,
+// le pire cas reste sous 15 s (le step Coder dispose de 45 s au total).
+const TIMEOUT_MS = 7_000;
+const ATTEMPTS = 1;
 const PARALLEL = 3;
+
+/** Unsplash sert la photo à la taille demandée : sans transformation, une
+ *  image de galerie pèse ~450 Ko (bundle = 2.7 Mo, upload Vercel = 40 s).
+ *  1400 px / qualité 72 / JPEG ≈ 140 Ko : bundle ≈ 800 Ko, deploy ≈ 8 s. */
+function optimizedUrl(url: string): string {
+  if (!/images\.unsplash\.com/.test(url)) return url;
+  const u = new URL(url);
+  u.searchParams.set("w", "1400");
+  u.searchParams.set("q", "72");
+  u.searchParams.set("fm", "jpg");
+  u.searchParams.set("fit", "crop");
+  u.searchParams.set("auto", "format");
+  return u.toString();
+}
 
 async function fetchOne(url: string, fetchImpl: typeof fetch): Promise<Buffer | null> {
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     try {
-      const res = await fetchImpl(url, {
+      const res = await fetchImpl(optimizedUrl(url), {
         signal: AbortSignal.timeout(TIMEOUT_MS),
         headers: {
           "user-agent":
@@ -33,6 +50,7 @@ async function fetchOne(url: string, fetchImpl: typeof fetch): Promise<Buffer | 
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       if (ct && !ct.startsWith("image/")) continue;
       const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length > MAX_BYTES) continue;
       if (buf.length > MIN_BYTES) return buf;
       continue;
     } catch {

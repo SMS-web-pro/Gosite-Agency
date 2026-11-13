@@ -3,7 +3,6 @@ import type { ReactNode } from "react";
 import "./globals.css";
 import { AppShell } from "@/components/app-shell";
 import { getAllSettings } from "@/lib/settings";
-import { ensureAgentsSeeded } from "@/lib/agents";
 import { db } from "@/db";
 import { serperKeys } from "@/db/schema";
 import { eq } from "drizzle-orm";
@@ -16,12 +15,12 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  await ensureAgentsSeeded();
-  const s = await getAllSettings();
-  const activeKeys = await db
-    .select({ apiKey: serperKeys.apiKey })
-    .from(serperKeys)
-    .where(eq(serperKeys.status, "active"));
+  // Layout léger : le seeding agents/schéma est mémoïsé dans les routes API
+  // (stats, autopilot, cron) — pas de DDL ni de 9 selects à chaque page.
+  const [s, activeKeys] = await Promise.all([
+    getAllSettings(),
+    db.select({ apiKey: serperKeys.apiKey }).from(serperKeys).where(eq(serperKeys.status, "active")),
+  ]);
   const serperLive = activeKeys.some((k) => !k.apiKey.startsWith("AUTO-POOL"));
   const integrations = {
     telegram: Boolean(s.TELEGRAM_BOT_TOKEN && s.TELEGRAM_CHAT_ID),

@@ -22,7 +22,7 @@ type Lang = "fr" | "en";
 const EN_COUNTRIES = /\b(usa?|u\.s\.a?|united states|états-unis|etats-unis|america|uk|u\.k\.|united kingdom|royaume-uni|england|angleterre|great britain|gb)\b/i;
 const FR_COUNTRIES = /\b(france|canada|belgium|belgique|belgie|maroc|morocco|algerie|algeria|tunisie|tunisia|suisse|switzerland|luxembourg)\b/i;
 
-export function resolveLang(p: Prospect): Lang {
+export function resolveLang(p: { clientData?: Record<string, string> | null; country?: string | null }): Lang {
   const sheet = (p.clientData ?? {}) as Record<string, unknown>;
   const raw = typeof sheet.LANG === "string" ? sheet.LANG.trim().toLowerCase() : "";
   if (raw.startsWith("en")) return "en";

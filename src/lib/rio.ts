@@ -85,7 +85,7 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
           max_tokens: 4000,
         }),
       },
-      { timeoutMs: 75000, retries: 1, delayMs: 800 }
+      { timeoutMs: 25_000, retries: 1, delayMs: 800 }
     );
     if (!res.ok) {
       return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };

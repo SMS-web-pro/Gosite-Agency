@@ -3,7 +3,8 @@
 
 import { db } from "@/db";
 import { agents, prospects, activities, objectives, leadNotes, scoutSchedules, serperKeys, emails, aiCalls, inboundEmails } from "@/db/schema";
-import { and, desc, eq, ilike, or } from "drizzle-orm";
+import { prospectLightColumns } from "@/db/light";
+import { and, desc, eq, ilike, isNotNull, ne, or, sql } from "drizzle-orm";
 import { logActivity } from "./activity";
 import {
   runScoutMission, runBulkValidation, runFullPipeline, validateProspect, verifyProspectEmail,
@@ -245,22 +246,33 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
   switch (name) {
     /* ── Vue d'ensemble ── */
     case "get_dashboard": {
-      const all = await db.select().from(prospects);
+      // Compteurs en SQL : le select complet pesait ~18 Mo (site_bundle inclus).
+      const countsRows = await db
+        .select({ stage: prospects.stage, n: sql<number>`count(*)::int` })
+        .from(prospects)
+        .groupBy(prospects.stage);
       const counts: Record<string, number> = {};
-      for (const p of all) counts[p.stage] = (counts[p.stage] ?? 0) + 1;
-      const team = await db.select().from(agents);
-      const paid = all.filter((p) => p.paymentStatus === "paid").length;
+      let total = 0;
+      for (const r of countsRows) { counts[r.stage] = r.n; total += r.n; }
+      const [team, paidRows, sitesRows, onlineRows, offeredRows] = await Promise.all([
+        db.select().from(agents),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(eq(prospects.paymentStatus, "paid")),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(or(isNotNull(prospects.siteHtml), isNotNull(prospects.siteBundle))),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(isNotNull(prospects.deployedUrl)),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(isNotNull(prospects.contactedAt)),
+      ]);
+      const paid = paidRows[0]?.n ?? 0;
       const data = {
-        total: all.length,
+        total,
         parEtape: counts,
-        sitesGeneres: all.filter((p) => p.siteHtml).length,
-        enLigne: all.filter((p) => p.deployedUrl).length,
-        offresEnvoyees: all.filter((p) => p.contactedAt).length,
+        sitesGeneres: sitesRows[0]?.n ?? 0,
+        enLigne: onlineRows[0]?.n ?? 0,
+        offresEnvoyees: offeredRows[0]?.n ?? 0,
         payes: paid,
         agentsEnPause: team.filter((a) => a.status === "paused").map((a) => a.name),
         agentsEnErreur: team.filter((a) => a.status === "error").map((a) => `${a.name}: ${a.lastError ?? "?"}`),
       };
-      return { ok: true, summary: `Pipeline: ${all.length} leads, ${data.sitesGeneres} sites, ${data.enLigne} en ligne, ${data.offresEnvoyees} offres, ${paid} payés.`, data };
+      return { ok: true, summary: `Pipeline: ${total} leads, ${data.sitesGeneres} sites, ${data.enLigne} en ligne, ${data.offresEnvoyees} offres, ${paid} payés.`, data };
     }
 
     /* ── Leads ── */
@@ -272,7 +284,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       if (stage) conds.push(eq(prospects.stage, stage));
       if (search) conds.push(or(ilike(prospects.businessName, `%${search}%`), ilike(prospects.city, `%${search}%`))!);
       const rows = await db
-        .select()
+        .select(prospectLightColumns)
         .from(prospects)
         .where(conds.length ? and(...conds) : undefined)
         .orderBy(desc(prospects.createdAt))
@@ -288,7 +300,11 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
 
     case "get_lead": {
       const id = num(args.id, 0);
-      const rows = await db.select().from(prospects).where(eq(prospects.id, id)).limit(1);
+      const rows = await db
+        .select({ ...prospectLightColumns, clientData: prospects.clientData })
+        .from(prospects)
+        .where(eq(prospects.id, id))
+        .limit(1);
       const p = rows[0];
       if (!p) return { ok: false, summary: `Lead #${id} introuvable.` };
       const notes = await db.select().from(leadNotes).where(eq(leadNotes.prospectId, id)).orderBy(desc(leadNotes.createdAt)).limit(5);
@@ -300,7 +316,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
           telephone: p.phone, email: p.email, emailStatut: p.emailStatus, emailDetail: p.emailDetail,
           note: p.rating, avis: p.reviewCount, aDejaUnSite: p.hasWebsite,
           etape: STAGE_META[p.stage]?.label ?? p.stage, motifRejet: p.rejectReason,
-          ficheRemplie: Boolean(p.clientData), siteGenere: Boolean(p.siteHtml),
+          ficheRemplie: Boolean(p.clientData), siteGenere: Boolean(p.hasSite),
           urlDeployee: p.deployedUrl, statutDeploiement: p.deployStatus,
           offreEnvoyeeLe: p.contactedAt, statutPaiement: p.paymentStatus, lienPaiement: p.paymentUrl,
           domaine: p.domainUrl, source: p.source, cree: p.createdAt,
@@ -339,7 +355,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       if (ids.length === 0) return { ok: false, summary: "Aucun ID fourni. Précisez les leads à supprimer ou utilisez purge_rejected." };
       const names: string[] = [];
       for (const id of ids) {
-        const rows = await db.select().from(prospects).where(eq(prospects.id, id)).limit(1);
+        const rows = await db.select({ businessName: prospects.businessName }).from(prospects).where(eq(prospects.id, id)).limit(1);
         if (rows[0]) names.push(`#${id} ${rows[0].businessName}`);
         await db.delete(prospects).where(eq(prospects.id, id));
       }
@@ -475,14 +491,22 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
         return { ok: true, summary: `Objectif #${id} clôturé.` };
       }
       const rows = await db.select().from(objectives).where(eq(objectives.status, "active"));
-      const all = await db.select().from(prospects);
-      const progress = (m: string) => {
-        if (m === "leads") return all.length;
-        if (m === "qualified") return all.filter((p) => p.stage !== "discovered" && p.stage !== "rejected").length;
-        if (m === "deployed") return all.filter((p) => p.deployedUrl).length;
-        if (m === "contacted") return all.filter((p) => p.contactedAt).length;
-        return all.filter((p) => p.paymentStatus === "paid").length;
+      // Compteurs en SQL au lieu de charger les 64 leads avec leur bundle (18 Mo).
+      const [leadsRows, qualRows, depRows, conRows, payRows] = await Promise.all([
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(and(ne(prospects.stage, "discovered"), ne(prospects.stage, "rejected"))),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(isNotNull(prospects.deployedUrl)),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(isNotNull(prospects.contactedAt)),
+        db.select({ n: sql<number>`count(*)::int` }).from(prospects).where(eq(prospects.paymentStatus, "paid")),
+      ]);
+      const metrics: Record<string, number> = {
+        leads: leadsRows[0]?.n ?? 0,
+        qualified: qualRows[0]?.n ?? 0,
+        deployed: depRows[0]?.n ?? 0,
+        contacted: conRows[0]?.n ?? 0,
+        paid: payRows[0]?.n ?? 0,
       };
+      const progress = (m: string) => metrics[m] ?? 0;
       return {
         ok: true,
         summary: rows.length ? `${rows.length} objectif(s) actif(s).` : "Aucun objectif actif.",
@@ -493,7 +517,7 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
     case "add_note": {
       const id = num(args.id, 0);
       const note = str(args.note);
-      const rows = await db.select().from(prospects).where(eq(prospects.id, id)).limit(1);
+      const rows = await db.select({ businessName: prospects.businessName }).from(prospects).where(eq(prospects.id, id)).limit(1);
       if (!rows[0]) return { ok: false, summary: `Lead #${id} introuvable.` };
       await db.insert(leadNotes).values({ prospectId: id, author: "RIO", body: note });
       await logActivity({ agentKey: "rio", action: "note_ajoutee", message: `Note sur ${rows[0].businessName} : ${note.slice(0, 80)}`, level: "info", prospectId: id });

@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { db } from "@/db";
 import { prospects } from "@/db/schema";
+import { prospectLightColumns } from "@/db/light";
 import { desc, eq } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -21,9 +22,10 @@ function cell(v: unknown): string {
 
 export async function GET(req: NextRequest) {
   const stage = req.nextUrl.searchParams.get("stage");
+  const base = db.select(prospectLightColumns).from(prospects);
   const rows = stage
-    ? await db.select().from(prospects).where(eq(prospects.stage, stage)).orderBy(desc(prospects.createdAt))
-    : await db.select().from(prospects).orderBy(desc(prospects.createdAt));
+    ? await base.where(eq(prospects.stage, stage)).orderBy(desc(prospects.createdAt))
+    : await base.orderBy(desc(prospects.createdAt));
 
   const header = COLS.join(",");
   const body = rows.map((r) => COLS.map((c) => cell((r as Record<string, unknown>)[c])).join(",")).join("\n");

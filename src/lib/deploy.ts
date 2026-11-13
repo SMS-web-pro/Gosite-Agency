@@ -57,7 +57,7 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
         files: [{ file: "index.html", data: Buffer.from(html, "utf8").toString("base64"), encoding: "base64" }],
         projectSettings: { framework: null, buildCommand: "", installCommand: "", outputDirectory: "." },
       }),
-      signal: AbortSignal.timeout(60000),
+      signal: AbortSignal.timeout(35000),
     });
     const json = (await res.json()) as { url?: string; error?: { message?: string } };
     if (!res.ok || !json.url) {
@@ -111,7 +111,7 @@ export async function deploySiteBundle(slug: string, bundle: Record<string, stri
         files,
         projectSettings: { framework: null, buildCommand: "", installCommand: "", outputDirectory: "." },
       }),
-      signal: AbortSignal.timeout(90000),
+      signal: AbortSignal.timeout(35000),
     });
     const json = (await res.json()) as { url?: string; error?: { message?: string } };
     if (!res.ok || !json.url) {
@@ -165,19 +165,12 @@ async function autoVerifyDomain(domain: string, projectSlug: string, vercelToken
         signal: AbortSignal.timeout(15000),
       });
     }
-    // Toutes les valeurs poussées : Vercel re-vérifie (poll court + appel best-effort).
+    // Toutes les valeurs poussées : Vercel re-vérifie. On ne polls PAS
+    // 20 s ici (le budget de la route est de 45 s sur Vercel Hobby) : la
+    // propagation DNS/SSL se poursuit côté Vercel et le domaine finit par
+    // répondre — le pipeline n'a pas à attendre.
     await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}/verify${qs}`, { method: "POST", headers: vh, signal: AbortSignal.timeout(15000) }).catch(() => {});
-    for (let i = 0; i < 4; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
-      const c = await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}${qs}`, { headers: vh, signal: AbortSignal.timeout(15000) });
-      const cj = (await c.json()) as { verified?: boolean };
-      if (cj.verified) {
-        console.log(`[deployer] ${domain} vérifié et SSL en cours (${(i + 1) * 5}s)`);
-        return;
-      }
-      await fetch(`https://api.vercel.com/v10/projects/${encodeURIComponent(projectSlug)}/domains/${encodeURIComponent(domain)}/verify${qs}`, { method: "POST", headers: vh, signal: AbortSignal.timeout(15000) }).catch(() => {});
-    }
-    console.warn(`[deployer] ${domain} lié mais vérification DNS non confirmée dans les 20s (elle aboutira toute seule)`);
+    console.log(`[deployer] ${domain} : TXT poussés, vérification Vercel relancée (propagation en cours)`);
   } catch (err) {
     console.warn("[deployer] auto-vérification DNS impossible (non bloquant):", err instanceof Error ? err.message : err);
   }

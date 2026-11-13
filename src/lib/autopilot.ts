@@ -29,10 +29,9 @@ export type TickSummary = {
 
 const TICK_LOCK_KEY = "TICK_LOCK";
 const TICK_LOCK_STALE_MS = 10 * 60_000; // un tick planté libère le verrou après 10 min
-// Avec un ping externe toutes les 10 min, chaque cycle doit rester borné bien
-// sous le maxDuration de la fonction (300 s) : on s'arrête à 240 s, le tick
-// suivant reprendra le lot là où il était (avancement sauvegardé lead par lead).
-const TICK_DEADLINE_MS = 240_000;
+// Budget du tick : Vercel Hobby = 60 s max par fonction. On s'arrête à 45 s
+// pour garder la marge (réponse + libération du lease) avant le kill.
+const TICK_DEADLINE_MS = 45_000;
 
 // Verrou de tick : un seul cycle à la fois (cron + RIO + manuel ne doivent
 // jamais traiter le même batch en parallèle). Claim atomique avec expiration

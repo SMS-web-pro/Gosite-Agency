@@ -58,7 +58,19 @@ export async function POST(req: NextRequest, ctx: Ctx) {
       return NextResponse.json({ ok: true }, { headers: corsHeaders(req) });
     }
 
-    const rows = await db.select().from(prospects).where(eq(prospects.id, prospectId)).limit(1);
+    // Projection ciblée : le select complet chargeait le bundle (~2.7 Mo)
+    // pour une simple soumission de formulaire.
+    const rows = await db
+      .select({
+        id: prospects.id,
+        businessName: prospects.businessName,
+        siteSlug: prospects.siteSlug,
+        deployedUrl: prospects.deployedUrl,
+        clientData: prospects.clientData,
+      })
+      .from(prospects)
+      .where(eq(prospects.id, prospectId))
+      .limit(1);
     const p = rows[0];
     if (!p) return NextResponse.json({ ok: false, errors: ["Unknown business"] }, { status: 404, headers: corsHeaders(req) });
 
@@ -77,10 +89,11 @@ export async function POST(req: NextRequest, ctx: Ctx) {
     const clientEmail = (sheet.EMAIL || "").trim();
     if (clientEmail && clientEmail.toLowerCase() !== "none") {
       const lang = (sheet.LANG || "fr").startsWith("en") ? "en" : "fr";
+      const siteUrl = p.deployedUrl || (p.siteSlug ? `https://${p.siteSlug}.vercel.app` : "votre site");
       const lines =
         lang === "en"
           ? [
-              `New request from your website (${p.siteSlug ? `https://${p.siteSlug}.vercel.app` : p.deployedUrl || "your site"})`,
+              `New request from your website (${siteUrl})`,
               "",
               `Name: ${values.name}`,
               `Phone: ${values.phone}`,
@@ -94,7 +107,7 @@ export async function POST(req: NextRequest, ctx: Ctx) {
               .filter(Boolean)
               .join("\n")
           : [
-              `Nouvelle demande depuis votre site (${p.siteSlug ? `https://${p.siteSlug}.vercel.app` : p.deployedUrl || "votre site"})`,
+              `Nouvelle demande depuis votre site (${siteUrl})`,
               "",
               `Nom : ${values.name}`,
               `Téléphone : ${values.phone}`,
