@@ -21,7 +21,7 @@ async function authorized(req: NextRequest): Promise<boolean> {
   const auth = req.headers.get("authorization");
   if (auth && [...candidates].some((s) => auth === `Bearer ${s}`)) return true;
   const urlKey = req.nextUrl.searchParams.get("key");
-  return Boolean(urlKey) && candidates.has(urlKey);
+  return Boolean(urlKey) && candidates.has(urlKey as string);
 }
 
 export async function GET(req: NextRequest) {
