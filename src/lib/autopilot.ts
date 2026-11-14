@@ -257,6 +257,47 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     summary.errors.push(`reconciliation: ${err instanceof Error ? err.message : "?"}`);
   }
 
+  // ── 3c) Garde-fou Vercel : le fair use verrouille le compte 30 jours sans
+  //      préavis (déjà arrivé — fastOriginTransfer). Le softBlock est lisible
+  //      sur le plan Hobby via /v2/teams ; alerte Telegram dans l'heure, sites
+  //      clients restent sur Cloudflare Pages. Un check/h max.
+  try {
+    const last = await getSetting("TICK_SOFTBLOCK_CHECK");
+    if (!last || Date.now() - new Date(last).getTime() >= 3600_000) {
+      await db
+        .insert(settings)
+        .values({ key: "TICK_SOFTBLOCK_CHECK", value: new Date().toISOString(), updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value: new Date().toISOString(), updatedAt: new Date() } });
+      const token = await getSetting("VERCEL_TOKEN");
+      if (token) {
+        const teamId = await getSetting("VERCEL_TEAM_ID");
+        const res = await fetch(`https://api.vercel.com/v2/teams${teamId ? `?teamId=${teamId}` : ""}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (res.ok) {
+          const j = (await res.json()) as { team?: { softBlock?: { blockedAt?: string; reason?: string } } };
+          if (j.team?.softBlock) {
+            const reason = j.team.softBlock.reason ?? "fair use";
+            summary.errors.push(`vercel_softblock: ${reason}`);
+            await logActivity({
+              agentKey: "autopilot", action: "vercel_softblock",
+              message: `Compte Vercel verrouillé (${reason}) — deploys clients déjà sur Cloudflare Pages.`,
+              level: "warn",
+            });
+            await notifyTelegram(
+              `🚨 <b>Vercel a verrouillé le compte</b> (fair use)\n` +
+                `Motif : ${reason} · Bloqué à : ${j.team.softBlock.blockedAt ?? "?"}\n` +
+                `Les sites clients restent déployés sur Cloudflare Pages.`,
+            );
+          }
+        }
+      }
+    }
+  } catch (err) {
+    summary.errors.push(`softblock_check: ${err instanceof Error ? err.message : "?"}`);
+  }
+
   // ── 4) Auto-amélioration : au maximum une évolution par agent toutes les
   //      6 heures (sinon un ping toutes les 10 min paierait un appel LLM
   //      d'analyse de journal à chaque cycle pour le même résultat).
