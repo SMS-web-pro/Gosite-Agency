@@ -13,7 +13,5 @@ jobs:
     steps:
       - name: Trigger /api/cron/tick
         run: |
-          # URL de prod (domaine custom migré dès la libération de gosite.digital
-          # sur l'ancien compte — revenir à https://gosite.digital alors).
           curl -fsS --max-time 280 \
-            "https://gosite-agency-three.vercel.app/api/cron/tick?key=${{ secrets.TICK_SECRET }}"
+            "https://gosite.digital/api/cron/tick?key=${{ secrets.TICK_SECRET }}"
