@@ -1,7 +1,10 @@
-// Deployer — déploie le site sur Vercel : sous-domaine {clientId}.{domaine-agence}.
-// Sans token configuré : déploiement simulé + preview sandbox active.
+// Deployer — déploie le site client sur Cloudflare Pages (gratuit, illimité,
+// sous-domaine {slug}.{domaine-agence} vérifié automatiquement : la zone vit
+// dans le même compte Cloudflare) avec repli sur Vercel quand Cloudflare
+// n'est pas configuré. Sans token du tout : déploiement simulé + preview.
 
 import { getSetting, allowSimulation } from "./settings";
+import { cfAccount, deployToPages, linkPagesDomain } from "./cf-pages";
 
 // Normalise le domaine agence : tolère les réglages stockés comme URL complète
 // ("https://gosite.digital/") et les ramène au domaine nu "gosite.digital".
@@ -27,7 +30,7 @@ export function slugifyId(name: string): string {
 export type DeployResult = {
   ok: boolean;
   url: string;
-  mode: "vercel" | "simulated";
+  mode: "vercel" | "simulated" | "cloudflare";
   error?: string;
 };
 
@@ -84,9 +87,35 @@ export async function deployToVercel(slug: string, html: string): Promise<Deploy
 const BINARY_FILE_RE = /\.(jpe?g|png|gif|webp|avif|ico)$/i;
 
 export async function deploySiteBundle(slug: string, bundle: Record<string, string>): Promise<DeployResult> {
+  const agencyDomain = normalizeAgencyDomain((await getSetting("AGENCY_DOMAIN")) || "gosite.digital");
+
+  // 1) Cloudflare Pages : gratuit, bande passante illimitée, pas de fair-use.
+  //    La zone DNS est dans le même compte → le sous-domaine se lie et se
+  //    vérifie automatiquement (CNAME spécifique qui prime sur le wildcard
+  //    *.gosite.digital resté sur Vercel).
+  const cf = await cfAccount();
+  if (cf) {
+    try {
+      await deployToPages(slug, bundle);
+      await linkPagesDomain(slug, `${slug}.${agencyDomain}`);
+      return { ok: true, url: `https://${slug}.${agencyDomain}`, mode: "cloudflare" };
+    } catch (err) {
+      // Fallback Vercel : on continue avec l'erreur CF comme diagnostic.
+      const vercel = await deployToVercelBundle(slug, bundle, agencyDomain);
+      if (!vercel.ok) {
+        return { ok: false, url: "", mode: "vercel", error: `Cloudflare: ${err instanceof Error ? err.message : err} | Vercel: ${vercel.error}` };
+      }
+      return vercel;
+    }
+  }
+
+  // 2) Vercel direct (pas de Cloudflare configuré).
+  return deployToVercelBundle(slug, bundle, agencyDomain);
+}
+
+async function deployToVercelBundle(slug: string, bundle: Record<string, string>, agencyDomain: string): Promise<DeployResult> {
   const token = await getSetting("VERCEL_TOKEN");
   const teamId = await getSetting("VERCEL_TEAM_ID");
-  const agencyDomain = normalizeAgencyDomain((await getSetting("AGENCY_DOMAIN")) || "gosite.digital");
 
   if (!token) {
     if (!(await allowSimulation())) {

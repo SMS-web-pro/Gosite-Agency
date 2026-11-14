@@ -512,39 +512,21 @@ export async function deployProspectSite(p: Prospect) {
     throw new Error(res.error);
   }
   // URL finale = sous-domaine de l'agence : {slug}.{AGENCY_DOMAIN}.
-  // Le lien de domaine est appliqué immédiatement après le déploiement ;
-  // l'URL *.vercel.app n'est qu'un repli temporaire si la liaison échoue.
+  // Cloudflare Pages : le sous-domaine est lié DANS le deploy (zone dans le
+  // même compte) → finalUrl déjà bon, il reste le re-rendu du canonical.
+  // Vercel : la liaison de domaine est appliquée immédiatement après le
+  // déploiement ; l'URL *.vercel.app n'est qu'un repli temporaire.
   let finalUrl = res.url;
   let domainMode = "Vercel production";
-  if (res.mode === "vercel") {
+  const cfMode = res.mode === "cloudflare";
+  const vercelMode = res.mode === "vercel";
+  if (cfMode) {
+    domainMode = "Cloudflare Pages (sous-domaine agence lié)";
+  } else if (vercelMode) {
     const domainRes = await linkDomain(slug, "");
     if (domainRes.ok) {
       finalUrl = domainRes.url;
       domainMode = "sous-domaine agence lié";
-      // v6 : canonical/OG/sitemap/JSON-LD doivent pointer le domaine final
-      // réellement retourné par le déployeur → re-rendu + redéploiement
-      // immédiat (non bloquant, même logique que Domainner).
-      if (p.siteBundle) {
-        try {
-          const newBundle = await reRenderBundleForDomain(p, slug, res.url, finalUrl);
-          const redeploy = await deploySiteBundle(slug, newBundle);
-          if (redeploy.ok) {
-            await db.update(prospects).set({ siteBundle: newBundle, updatedAt: new Date() }).where(eq(prospects.id, p.id));
-          } else {
-            await logActivity({
-              agentKey: "deployer", action: "bundle_regenere_echec",
-              message: `Redéploiement du bundle sur le domaine final échoué (${redeploy.error}) — bundle *.vercel.app maintenu, non bloquant.`,
-              level: "warn", prospectId: p.id,
-            });
-          }
-        } catch (err) {
-          await logActivity({
-            agentKey: "deployer", action: "bundle_regenere_echec",
-            message: `Re-rendu du bundle pour le domaine final impossible (${err instanceof Error ? err.message : err}) — non bloquant.`,
-            level: "warn", prospectId: p.id,
-          });
-        }
-      }
     } else {
       domainMode = `Vercel production — sous-domaine agence non lié (${domainRes.error})`;
       await logActivity({
@@ -554,11 +536,36 @@ export async function deployProspectSite(p: Prospect) {
       });
     }
   }
-  await updateWithSlug(p.id, slug, { deployedUrl: finalUrl, deployStatus: res.mode === "vercel" ? "live" : "simulated", stage: "deployed" });
+  // v6 : canonical/OG/sitemap/JSON-LD doivent pointer le domaine final
+  // réellement retourné par le déployeur → re-rendu + redéploiement
+  // immédiat (non bloquant, même logique que Domainner).
+  if ((cfMode || vercelMode) && p.siteBundle) {
+    try {
+      const oldBase = cfMode ? `https://${slug}.vercel.app` : res.url;
+      const newBundle = await reRenderBundleForDomain(p, slug, oldBase, finalUrl);
+      const redeploy = await deploySiteBundle(slug, newBundle);
+      if (redeploy.ok) {
+        await db.update(prospects).set({ siteBundle: newBundle, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+      } else {
+        await logActivity({
+          agentKey: "deployer", action: "bundle_regenere_echec",
+          message: `Redéploiement du bundle sur le domaine final échoué (${redeploy.error}) — bundle initial maintenu, non bloquant.`,
+          level: "warn", prospectId: p.id,
+        });
+      }
+    } catch (err) {
+      await logActivity({
+        agentKey: "deployer", action: "bundle_regenere_echec",
+        message: `Re-rendu du bundle pour le domaine final impossible (${err instanceof Error ? err.message : err}) — non bloquant.`,
+        level: "warn", prospectId: p.id,
+      });
+    }
+  }
+  await updateWithSlug(p.id, slug, { deployedUrl: finalUrl, deployStatus: res.mode === "simulated" ? "simulated" : "live", stage: "deployed" });
   await markAgentRunEnd("deployer", true);
   await logActivity({
     agentKey: "deployer", action: "deploiement",
-    message: `${slug} déployé → ${finalUrl} (${res.mode === "vercel" ? domainMode : "simulation, preview sandbox active"}).`,
+    message: `${slug} déployé → ${finalUrl} (${res.mode === "simulated" ? "simulation, preview sandbox active" : domainMode}).`,
     level: "success", prospectId: p.id, meta: { url: finalUrl, mode: res.mode },
   });
   await notifyTelegram(`🚀 <b>Deployer</b> — ${p.businessName}\nSite en ligne : ${finalUrl}${res.mode === "simulated" ? "\n(mode simulation : ajoutez VERCEL_TOKEN pour un vrai déploiement)" : ""}`);
