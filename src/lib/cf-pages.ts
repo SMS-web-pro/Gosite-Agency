@@ -82,8 +82,8 @@ export async function deployToPages(projectName: string, bundle: Record<string, 
       return { path, key: assetHash(buf, path), value: buf.toString("base64"), contentType: contentTypeOf(path) };
     });
 
-  // 1) JWT d'upload (~5 min, scoped au project)
-  const tk = await cfOk<{ jwt: string }>(await fetch(`${CF_API}/accounts/${accountId}/pages/projects/${projectName}/upload-token`, { method: "POST", headers: h(token), signal: AbortSignal.timeout(20000) }), "upload-token");
+  // 1) JWT d'upload (~5 min, scoped au project) — GET, pas POST (405 sinon).
+  const tk = await cfOk<{ jwt: string }>(await fetch(`${CF_API}/accounts/${accountId}/pages/projects/${projectName}/upload-token`, { method: "GET", headers: h(token), signal: AbortSignal.timeout(20000) }), "upload-token");
   const jh = { Authorization: `Bearer ${tk.jwt}`, "Content-Type": "application/json" };
 
   // 2) check-missing : saute ce que CF a déjà en magasin
@@ -123,9 +123,10 @@ async function pushBatch(batch: { key: string; value: string; contentType: strin
 }
 
 // Lie le sous-domaine de l'agence au project. La zone gosite.digital vit dans
-// le même compte Cloudflare : le CNAME `<slug>.gosite.digital →
-// <project>.pages.dev` est créé et vérifié automatiquement, le wildcard
-// *.gosite.digital (Vercel) reste pour les projets qui y sont encore déployés.
+// le même compte Cloudflare. Via l'API, CF ne crée PAS le CNAME tout seul :
+// on POST le domain au project (vérification + certificat auto) PUIS on pose
+// explicitement le CNAME `<slug>.gosite.digital → <slug>.pages.dev` (DNS only,
+// il prime sur le wildcard *.gosite.digital qui pointe encore vers Vercel).
 export async function linkPagesDomain(projectName: string, domain: string): Promise<void> {
   const acc = await cfAccount();
   if (!acc) throw new Error("Cloudflare Pages : CLOUDFLARE_TOKEN / CLOUDFLARE_ACCOUNT_ID requis (Réglages → Cloudflare).");
@@ -137,4 +138,18 @@ export async function linkPagesDomain(projectName: string, domain: string): Prom
     const msg = j?.errors?.[0]?.message ?? `HTTP ${res.status}`;
     if (!/already|existe/i.test(msg)) throw new Error(`CF Pages domain ${domain}: ${msg}`);
   }
+  // CNAME explicite (idempotent) — zone = la partie agence du domaine.
+  const zone = domain.replace(/^[^.]+\./, "");
+  const zres = await fetch(`${CF_API}/zones?name=${encodeURIComponent(zone)}`, { headers: h(acc.token), signal: AbortSignal.timeout(15000) });
+  const zoneId = ((await zres.json()) as { result?: { id: string }[] }).result?.[0]?.id;
+  if (!zoneId) return;
+  const target = `${projectName}.pages.dev`;
+  const existing = await fetch(`${CF_API}/zones/${zoneId}/dns_records?type=CNAME&name=${encodeURIComponent(domain)}`, { headers: h(acc.token), signal: AbortSignal.timeout(15000) });
+  const present = (((await existing.json()) as { result?: { content: string; proxied?: boolean }[] }).result ?? []).some((r) => r.content === target && r.proxied === false);
+  if (present) return;
+  await fetch(`${CF_API}/zones/${zoneId}/dns_records`, {
+    method: "POST", headers: { ...h(acc.token), "Content-Type": "application/json" },
+    body: JSON.stringify({ type: "CNAME", name: domain, content: target, ttl: 1, proxied: false }),
+    signal: AbortSignal.timeout(15000),
+  }).catch(() => {});
 }
