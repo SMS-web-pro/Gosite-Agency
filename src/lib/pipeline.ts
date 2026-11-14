@@ -507,9 +507,18 @@ export async function deployProspectSite(p: Prospect) {
   // v6 : bundle multi-pages si présent, sinon chemin legacy single-file.
   const res = p.siteBundle ? await deploySiteBundle(slug, p.siteBundle) : await deployToVercel(slug, p.siteHtml || "");
   if (!res.ok) {
-    await markAgentRunEnd("deployer", false, res.error);
-    await logActivity({ agentKey: "deployer", action: "deploy_echec", message: `Déploiement Vercel échoué : ${res.error}`, level: "error", prospectId: p.id });
-    throw new Error(res.error);
+    const err = res.error ?? "inconnu";
+    await markAgentRunEnd("deployer", false, err);
+    // Blocage d'infrastructure (token absent, fair-use, auth) : ce n'est pas la
+    // faute du lead — on bloque le cycle SANS incrémenter son failCount
+    // (message calibré pour le filtre "requis" du poison-loop de autopilot).
+    const infra = /fair use|Authentication error|auth|token/i.test(err);
+    if (infra) {
+      await logActivity({ agentKey: "deployer", action: "blocage_config", message: `Déploiement suspendu pour ${p.businessName} : canal d'hébergement indisponible (${err}) — token Cloudflare Pages:Edit requis ou compte Vercel débloqué.`, level: "warn", prospectId: p.id });
+      throw new Error("Hébergement indisponible (fair use / authentification) — configuration du canal de déploiement requise");
+    }
+    await logActivity({ agentKey: "deployer", action: "deploy_echec", message: `Déploiement Vercel échoué : ${err}`, level: "error", prospectId: p.id });
+    throw new Error(err);
   }
   // URL finale = sous-domaine de l'agence : {slug}.{AGENCY_DOMAIN}.
   // Cloudflare Pages : le sous-domaine est lié DANS le deploy (zone dans le
