@@ -153,10 +153,16 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     { stage: "deployed", agent: "saler", limit: 6, fn: contactProspect },
   ];
 
-  // Tourniquet : l'étape de départ change à chaque tick. Sinon le deadline de
-  // 45 s se consomme toujours sur les étapes amont (validator/emailor, pleines
-  // à chaque mission) et les étapes aval (coder/deployer/saler) meurent de faim.
-  const offset = Math.floor(Date.now() / 60_000) % steps.length;
+  // Tourniquet : l'étape de départ change à chaque tick (compteur persisté —
+  // minute%6 est piégé : des ticks espacés de 5 min tombent toujours sur les
+  // mêmes multiples de 6 et le tourniquet ne tourne jamais). Sinon le deadline
+  // de 45 s se consomme toujours sur les étapes amont (validator/emailor,
+  // pleines à chaque mission) et les étapes aval (coder/deployer/saler)
+  // meurent de faim. Le verrou de tick garantit l'absence de course.
+  const seqRows = await db.select().from(settings).where(eq(settings.key, "TICK_SEQ")).limit(1);
+  const seq = (Number(seqRows[0]?.value ?? "0") + 1) % 1_000_000;
+  await db.update(settings).set({ value: String(seq), updatedAt: new Date() }).where(eq(settings.key, "TICK_SEQ"));
+  const offset = seq % steps.length;
 
   for (let i = 0; i < steps.length; i++) {
     const step = steps[(i + offset) % steps.length];

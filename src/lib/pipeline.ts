@@ -588,6 +588,14 @@ export async function contactProspect(p: Prospect) {
   await markAgentRunStart("saler");
   const preview = p.deployedUrl ?? "";
   if (!preview) throw new Error("Site non déployé");
+  // Lead déployé mais sans email : on le renvoie à l'étape de déduction d'email
+  // (l'Emailor re-cherchera) au lieu de brûler le lead dans le poison-loop.
+  if (!p.email) {
+    await db.update(prospects).set({ stage: "email_verified", failCount: 0, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+    await markAgentRunEnd("saler", false, "email_manquant_reverifie");
+    await logActivity({ agentKey: "saler", action: "email_manquant", message: `${p.businessName} a un site déployé mais aucun email déduit → renvoyé à l'Emailor pour nouvelle déduction.`, level: "warn", prospectId: p.id });
+    throw new Error("Email non déduit — nouvelle tentative de déduction requise");
+  }
   // Opt-out : on ne contacte jamais une adresse désinscrite.
   const { isDoNotContact } = await import("./dnc");
   if (await isDoNotContact(p.email)) {
