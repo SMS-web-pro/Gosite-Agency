@@ -161,7 +161,11 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   // meurent de faim. Le verrou de tick garantit l'absence de course.
   const seqRows = await db.select().from(settings).where(eq(settings.key, "TICK_SEQ")).limit(1);
   const seq = (Number(seqRows[0]?.value ?? "0") + 1) % 1_000_000;
-  await db.update(settings).set({ value: String(seq), updatedAt: new Date() }).where(eq(settings.key, "TICK_SEQ"));
+  // Upsert obligatoire : la ligne n'existe pas au premier tick (update pur
+  // ne crée rien → seq restait à 0 et le tourniquet tournait sur un seul cran).
+  await db.insert(settings)
+    .values({ key: "TICK_SEQ", value: String(seq), updatedAt: new Date() })
+    .onConflictDoUpdate({ target: settings.key, set: { value: String(seq), updatedAt: new Date() } });
   const offset = seq % steps.length;
 
   for (let i = 0; i < steps.length; i++) {
