@@ -13,6 +13,7 @@ const COOKIE = "gsd_admin";
 // protégé par honeypot + rate limit + validation stricte côté route.
 const PUBLIC_PREFIXES = [
   "/api/cron/tick",
+  "/api/cron/heavy",
   "/api/telegram/webhook",
   "/api/webhooks/whop",
   "/api/webhooks/email",
