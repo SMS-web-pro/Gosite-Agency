@@ -2,7 +2,7 @@
 // par son agent dédié. RIO reçoit une notification Telegram aux jalons clés.
 
 import { db } from "@/db";
-import { prospects, emails, type Prospect } from "@/db/schema";
+import { prospects, emails, activities, type Prospect } from "@/db/schema";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { ensureAgentsSeeded, markAgentRunEnd, markAgentRunStart } from "./agents";
@@ -322,6 +322,15 @@ export async function verifyProspectEmail(p: Prospect) {
       }
     }
   }
+  // Toujours rien mais le site est DÉJÀ en ligne : on ne rejette pas un lead
+  // livré — retour à "deployed" (le saler le laissera en contact_pendu_form
+  // via le formulaire). Sans ce garde, verifyEmail(null) → invalid → brûlé.
+  if (!p.email && p.deployedUrl) {
+    await db.update(prospects).set({ stage: "deployed", emailStatus: "missing", updatedAt: new Date() }).where(eq(prospects.id, p.id));
+    await markAgentRunEnd("emailor", true);
+    await logActivity({ agentKey: "emailor", action: "email_introuvable", message: `${p.businessName} : aucune adresse déductible — site déjà en ligne, contact laissé au formulaire.`, level: "info", prospectId: p.id });
+    return { ok: true as const, check: { status: "missing" as const, detail: "aucune adresse déductible" } };
+  }
   const check = await verifyEmail(p.email);
   if (check.status === "invalid") {
     await db.update(prospects).set({ emailStatus: "invalid", emailDetail: check.detail, stage: "rejected", rejectReason: `Email invalide : ${check.detail}`, updatedAt: new Date() }).where(eq(prospects.id, p.id));
@@ -602,10 +611,19 @@ export async function contactProspect(p: Prospect) {
   await markAgentRunStart("saler");
   const preview = p.deployedUrl ?? "";
   if (!preview) throw new Error("Site non déployé");
-  // Lead déployé mais sans email : on le renvoie à l'étape de déduction d'email
-  // (l'Emailor re-cherchera) au lieu de brûler le lead dans le poison-loop.
+  // Lead déployé mais sans email : UNE seule re-déduction via l'Emailor —
+  // l'étape cible est "validated" (entrée de l'Emailor). Ensuite le lead reste
+  // déployé : son site vit, le formulaire collecte les demandes, et un
+  // rebond répéterait map→build→deploy à l'infini (rebuild + redeploy/tick).
   if (!p.email) {
-    await db.update(prospects).set({ stage: "email_verified", failCount: 0, updatedAt: new Date() }).where(eq(prospects.id, p.id));
+    const prior = await db.select({ id: activities.id }).from(activities)
+      .where(and(eq(activities.prospectId, p.id), eq(activities.action, "email_manquant"))).limit(1);
+    if (prior.length > 0) {
+      await markAgentRunEnd("saler", true, "contact_pendu_form");
+      await logActivity({ agentKey: "saler", action: "contact_pendu_form", message: `${p.businessName} reste déployé sans contact direct — le formulaire du site prend le relais.`, level: "info", prospectId: p.id });
+      return { ok: true as const, simulated: false, messageId: "contact_pendu_form" };
+    }
+    await db.update(prospects).set({ stage: "validated", failCount: 0, updatedAt: new Date() }).where(eq(prospects.id, p.id));
     await markAgentRunEnd("saler", false, "email_manquant_reverifie");
     await logActivity({ agentKey: "saler", action: "email_manquant", message: `${p.businessName} a un site déployé mais aucun email déduit → renvoyé à l'Emailor pour nouvelle déduction.`, level: "warn", prospectId: p.id });
     throw new Error("Email non déduit — nouvelle tentative de déduction requise");

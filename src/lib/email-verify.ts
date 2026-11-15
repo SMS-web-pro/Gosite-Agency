@@ -17,7 +17,7 @@ const FREE_PROVIDERS = new Set([
 ]);
 
 export type EmailCheck = {
-  status: "valid" | "risky" | "invalid";
+  status: "valid" | "risky" | "invalid" | "missing";
   detail: string;
   mxHosts?: string[];
 };
