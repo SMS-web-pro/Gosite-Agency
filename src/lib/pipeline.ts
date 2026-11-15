@@ -10,6 +10,7 @@ import { scoutSearch, provisionReplacementKey } from "./serper";
 import { verifyEmail } from "./email-verify";
 import { buildClientSheet, enrichSheetFromRealData, validateSheet } from "./mapper";
 import { buildSiteBundle } from "./coder";
+import { isStaleSiteBundle } from "./bundle";
 import { deployToVercel, deploySiteBundle, linkDomain, slugifyId } from "./deploy";
 import { sendSalesEmail } from "./emailer";
 import { createWhopPayment } from "./whop";
@@ -503,6 +504,19 @@ async function updateWithSlug(selfId: number, slug: string, values: Partial<type
 export async function deployProspectSite(p: Prospect) {
   await markAgentRunStart("deployer");
   if (!p.siteHtml && !p.siteBundle) throw new Error("Aucun site généré");
+  // v6 : un bundle sans le marqueur de la section avis animée (`t-star`) date
+  // d'avant le commit v6 — les vieux bundles sauvés en DB pendant la panne
+  // Vercel partaient en prod tels quels. On régénère (moteur v6) avant de
+  // déployer, puis on met le prospect à jour avec le bundle frais.
+  if (isStaleSiteBundle(p.siteBundle, p.siteHtml)) {
+    await logActivity({
+      agentKey: "deployer", action: "rebuild_stale",
+      message: `Bundle obsolète (pré-v6) détecté pour ${p.businessName} — régénération avant déploiement.`,
+      level: "info", prospectId: p.id,
+    });
+    const rebuilt = await buildProspectSite(p);
+    p = { ...p, siteHtml: rebuilt.html, siteBundle: rebuilt.bundle } as Prospect;
+  }
   const slug = await decideSlug(p);
   // v6 : bundle multi-pages si présent, sinon chemin legacy single-file.
   const res = p.siteBundle ? await deploySiteBundle(slug, p.siteBundle) : await deployToVercel(slug, p.siteHtml || "");

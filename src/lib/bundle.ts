@@ -259,6 +259,16 @@ export function patchIndexDomain(html: string, fromBase: string, toBase: string)
   return html.replace(rx, toBase);
 }
 
+/** Détecte un bundle obsolète : généré avant le commit v6 (section avis animée,
+ *  étoiles `t-star` en cascade). Les vieux bundles sauvés en DB partaient en
+ *  prod tels quels — le deployer doit régénérer avant tout déploiement. */
+export function isStaleSiteBundle(bundle: Record<string, string> | null | undefined, html: string | null | undefined): boolean {
+  if (bundle && Object.keys(bundle).length > 0) {
+    return !Object.values(bundle).some((v) => typeof v === "string" && v.includes("t-star"));
+  }
+  return !(html ?? "").includes("t-star");
+}
+
 /** Index de secours déterministe — utilisé quand Gemini échoue. Conforme v6 :
  *  tokens, data-reveal, 3 dividers, barre mobile, form API, zéro hotlink,
  *  zéro fait inventé (rating omis si absent, section testimonials omise). */
