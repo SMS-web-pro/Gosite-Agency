@@ -214,9 +214,15 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     const step = steps[(i + offset) % steps.length];
     if (Date.now() > deadline) { summary.deadlineReached = true; break; }
     if (!(await agentUsable(step.agent, cache))) continue;
+    // Budget PAR ÉTAPE : sans lui, les étapes amont pleines (validator/emailor/
+    // mapper : 15 leads × appel LLM) mangeaient tout le tick et coder/deployer
+    // mouraient de faim quoi que fasse le tourniquet. 7 s par étape, l'aval
+    // garde le reste ; une étape interrompue reprend au tick suivant (batch
+    // limité, pas de perte).
+    const stepEnd = step.agent === "deployer" ? deadline : Math.min(deadline, Date.now() + 7_000);
     const batch = await take(step.stage, step.limit);
     for (const p of batch) {
-      if (Date.now() > deadline) { summary.deadlineReached = true; break; }
+      if (Date.now() > stepEnd) { if (Date.now() > deadline) summary.deadlineReached = true; break; }
       // Un déploiement Cloudflare peut consommer la minute entière à lui seul :
       // lancé trop tard, il déborde de la durée de vie de la fonction (60 s)
       // et tue le tick en FUNCTION_INVOCATION_TIMEOUT. Le lead reste site_built
