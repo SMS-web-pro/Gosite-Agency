@@ -15,3 +15,7 @@ jobs:
         run: |
           curl -fsS --max-time 280 \
             "https://gosite.digital/api/cron/tick?key=${{ secrets.TICK_SECRET }}"
+      - name: Trigger /api/cron/heavy (build + deploy)
+        run: |
+          curl -fsS --max-time 280 \
+            "https://gosite.digital/api/cron/heavy?key=${{ secrets.TICK_SECRET }}"
