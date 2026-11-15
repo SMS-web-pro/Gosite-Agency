@@ -12,3 +12,6 @@ start.log
 .superpowers/
 tests/_lib/
 .tmp*
+
+.vercel
+.env*
