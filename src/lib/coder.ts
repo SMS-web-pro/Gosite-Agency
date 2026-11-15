@@ -364,7 +364,7 @@ export async function buildSiteBundle(
       const extracted = extractHtml(raw);
       // Validation marqueurs (le prompt les annonce « rejeté si absent ») :
       // un HTML incomplet bascule vers le fallback déterministe.
-      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/", "t-card"].every((m) => extracted.includes(m))) {
+      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/", "t-card", "t-star"].every((m) => extracted.includes(m))) {
         html = extracted;
       }
     }
