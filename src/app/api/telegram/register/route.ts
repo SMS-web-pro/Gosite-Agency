@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getTelegramWebhookInfo, registerTelegramWebhook } from "@/lib/telegram";
+import { ensureTelegramWebhookHealth } from "@/lib/telegram";
 import { getSetting, setSetting } from "@/lib/settings";
 
 export const runtime = "nodejs";
@@ -11,25 +11,44 @@ function baseUrlFromReq(req: NextRequest): string {
   return `${proto}://${host}`;
 }
 
-// Diagnostics du webhook (sans exposer le token)
+// Diagnostics du webhook (sans exposer le token) : on SONDE l'endpoint
+// réellement au lieu de recopier l'erreur Telegram, qui peut être vieille.
 export async function GET(req: NextRequest) {
-  const info = await getTelegramWebhookInfo();
-  const appBase = (await getSetting("APP_BASE_URL")) || baseUrlFromReq(req);
-  const expected = `${appBase.replace(/\/+$/, "")}/api/telegram/webhook`;
+  const detectedBase = baseUrlFromReq(req);
+  const health = await ensureTelegramWebhookHealth({ detectedBase, repair: false });
   return NextResponse.json({
-    ...info,
-    expectedUrl: expected,
-    urlMatches: info.ok ? info.info?.url === expected : false,
+    ok: health.probes.length > 0 || health.healthy,
+    healthy: health.healthy,
+    expectedUrl: health.expectedUrl,
+    urlMatches: health.urlMatches,
+    activeUrl: health.activeUrl,
+    staleTelegramError: health.staleTelegramError,
+    telegramError: health.telegramError,
+    telegramErrorAgeHours: health.telegramErrorAgeHours,
+    kind: health.kind,
+    detail: health.detail,
+    checkedAt: health.checkedAt,
+    info: health.probes.length
+      ? {
+          url: health.registeredUrl || null,
+          pending_update_count: health.pendingUpdateCount,
+          last_error_message: health.telegramError ?? undefined,
+          last_error_date: health.telegramErrorDate ?? undefined,
+          max_connections: 40,
+        }
+      : null,
   });
 }
 
-// Enregistrement / réparation du webhook
+// Enregistrement / réparation du webhook : on sonde, on ré-enregistre si
+// l'URL enregistrée est morte ou dérive, puis on revérifie.
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as { appBaseUrl?: string };
+  const detectedBase = baseUrlFromReq(req);
   if (body.appBaseUrl) {
     // Anti-détournement : seul le domaine de l'agence est accepté.
     const allowed = new Set<string>();
-    for (const candidate of [await getSetting("APP_BASE_URL"), await getSetting("AGENCY_DOMAIN"), baseUrlFromReq(req)]) {
+    for (const candidate of [await getSetting("APP_BASE_URL"), await getSetting("AGENCY_DOMAIN"), detectedBase]) {
       if (!candidate) continue;
       try {
         allowed.add(new URL(candidate).host);
@@ -48,8 +67,19 @@ export async function POST(req: NextRequest) {
     }
     await setSetting("APP_BASE_URL", body.appBaseUrl);
   }
-  const appBase = (await getSetting("APP_BASE_URL")) || baseUrlFromReq(req);
-  const res = await registerTelegramWebhook(appBase);
-  const info = await getTelegramWebhookInfo();
-  return NextResponse.json({ ...res, info: info.info ?? null, expectedUrl: `${appBase.replace(/\/+$/, "")}/api/telegram/webhook` });
+  const health = await ensureTelegramWebhookHealth({ detectedBase, repair: true });
+  return NextResponse.json({
+    ok: health.healthy,
+    healthy: health.healthy,
+    repaired: health.repaired,
+    url: health.repairedUrl ?? health.activeUrl,
+    error: health.healthy ? undefined : health.detail,
+    detail: health.detail,
+    expectedUrl: health.expectedUrl,
+    info: {
+      url: health.registeredUrl || null,
+      last_error_message: health.telegramError ?? undefined,
+      last_error_date: health.telegramErrorDate ?? undefined,
+    },
+  });
 }

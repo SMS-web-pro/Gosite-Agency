@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { serperKeys, prospects } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getAllSettings, allowSimulation, getSetting } from "@/lib/settings";
-import { getTelegramWebhookInfo } from "@/lib/telegram";
+import { ensureTelegramWebhookHealth } from "@/lib/telegram";
 import { ensureAgentsSeeded } from "@/lib/agents";
 
 export const runtime = "nodejs";
@@ -35,17 +35,26 @@ export async function GET(req: NextRequest) {
   let dbOk = true;
   try { await db.select({ id: prospects.id }).from(prospects).limit(1); } catch { dbOk = false; }
 
-  // Telegram webhook
+  // Telegram webhook : on sonde l'endpoint (comme Telegram le fait) au lieu
+  // de croire l'erreur Telegram au mot — celle-ci peut être vieille (p.ex. un
+  // 402 de l'ancien compte Vercel) alors que le canal va très bien.
   let tgDetail = "Token absent — RIO ne peut pas vous répondre sur Telegram.";
   let tgStatus: Check["status"] = "down";
   if (s.TELEGRAM_BOT_TOKEN) {
-    const info = await getTelegramWebhookInfo();
-    const expected = `${(configuredBase || detectedBase).replace(/\/+$/, "")}/api/telegram/webhook`;
-    if (!info.ok) { tgStatus = "down"; tgDetail = info.error ?? "Token refusé par Telegram."; }
-    else if (!info.info?.url) { tgStatus = "warn"; tgDetail = "Webhook non enregistré — cliquez sur « Enregistrer / réparer »."; }
-    else if (info.info.url !== expected) { tgStatus = "warn"; tgDetail = `Webhook pointe vers ${info.info.url} au lieu de ${expected}.`; }
-    else if (info.info.last_error_message) { tgStatus = "warn"; tgDetail = `Webhook actif mais Telegram signale : ${info.info.last_error_message}`; }
-    else { tgStatus = "ok"; tgDetail = `Webhook actif${s.TELEGRAM_CHAT_ID ? ` · chat ${s.TELEGRAM_CHAT_ID} enregistré` : " · envoyez /start au bot pour lier votre chat"}`; }
+    const health = await ensureTelegramWebhookHealth({ detectedBase: detectedBase, repair: false });
+    if (!health.healthy) {
+      tgStatus = "down";
+      tgDetail = health.detail;
+    } else if (health.repaired) {
+      tgStatus = "ok";
+      tgDetail = `Webhook actif (${health.activeUrl}) — ré-enregistré automatiquement.${health.staleTelegramError ? ` Telegram conserve une erreur ancienne : ${health.telegramError}.` : ""}`;
+    } else if (health.staleTelegramError) {
+      tgStatus = "ok";
+      tgDetail = `Webhook actif · endpoint 200 OK${health.telegramErrorAgeHours !== null ? ` — l'erreur Telegram affichée date d'il y a ${health.telegramErrorAgeHours} h (${health.telegramError}) : c'est une livraison ratée, pas l'état actuel. Elle s'efface au prochain message réussi.` : ""}`;
+    } else {
+      tgStatus = "ok";
+      tgDetail = `Webhook actif${s.TELEGRAM_CHAT_ID ? ` · chat ${s.TELEGRAM_CHAT_ID} enregistré` : " · envoyez /start au bot pour lier votre chat"}`;
+    }
     if (tgStatus === "ok" && !s.TELEGRAM_CHAT_ID) tgStatus = "warn";
   }
 

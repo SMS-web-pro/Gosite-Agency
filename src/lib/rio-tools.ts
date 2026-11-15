@@ -596,9 +596,18 @@ export async function executeTool(name: string, args: Record<string, unknown>): 
       const s = await getAllSettings();
       const keys = await db.select().from(serperKeys);
       const realActive = keys.filter((k) => k.status === "active" && !k.apiKey.startsWith("AUTO-POOL"));
+      // État réel du canal entrant : sondé, pas recopié de Telegram.
+      let telegram = "NON CONFIGURÉ";
+      if (s.TELEGRAM_BOT_TOKEN && s.TELEGRAM_CHAT_ID) {
+        const { ensureTelegramWebhookHealth } = await import("./telegram");
+        const health = await ensureTelegramWebhookHealth({ repair: false });
+        telegram = health.healthy
+          ? `LIVE — canal entrant OK (200)${health.staleTelegramError ? ` · vieille erreur Telegram du ${health.telegramErrorAgeHours ?? "?"} h (${health.telegramError})` : ""}`
+          : `LIVE (envoi) MAIS ENTRANT MUET — ${health.detail}`;
+      }
       const data = {
         serper: realActive.length ? `LIVE — ${realActive.length} compte(s), ${realActive.reduce((a, k) => a + (k.creditLimit - k.creditsUsed), 0)} crédits restants` : "NON CONFIGURÉ",
-        telegram: s.TELEGRAM_BOT_TOKEN && s.TELEGRAM_CHAT_ID ? "LIVE" : "NON CONFIGURÉ",
+        telegram,
         llm: s.LLM_BASE_URL && s.LLM_API_KEY ? `LIVE (${s.LLM_MODEL})` : "NON CONFIGURÉ",
         brevo: s.BREVO_API_KEY && s.BREVO_SENDER_EMAIL ? "LIVE" : "NON CONFIGURÉ",
         vercel: s.VERCEL_TOKEN ? "LIVE" : "NON CONFIGURÉ",

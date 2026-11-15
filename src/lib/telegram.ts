@@ -3,6 +3,13 @@ import { db } from "@/db";
 import { prospects, agents, activities } from "@/db/schema";
 import { desc, eq } from "drizzle-orm";
 import { logActivity } from "./activity";
+import {
+  buildHealthReport,
+  planRepair,
+  probeWebhook,
+  type ProbeKind,
+  type ProbeResult,
+} from "./telegram-health";
 
 export async function telegramConfigured(): Promise<boolean> {
   const token = await getSetting("TELEGRAM_BOT_TOKEN");
@@ -100,6 +107,183 @@ export async function registerTelegramWebhook(baseUrl: string): Promise<{ ok: bo
     return { ok: false, error: err instanceof Error ? err.message : "network" };
   }
 }
+
+// ─────────────────────────────────────────────
+// SANTÉ DU CANAL ENTRANT — sonde + auto-réparation
+//
+// Une panne « plateforme » (compte Vercel bloqué → 402, protection d'accès →
+// 401, alias mort → 404) n'est pas corrigeable en code : il faut la détecter,
+// la distinguer d'une vieille erreur Telegram, et alerter. Telegram, lui, ne
+// garde que sa DERNIÈRE erreur : un 402 vieux de 48 h reste affiché pour
+// toujours tant qu'aucune livraison n'a réussi.
+// ─────────────────────────────────────────────
+
+export type TelegramHealth = {
+  healthy: boolean;
+  activeUrl: string;
+  registeredUrl: string;
+  expectedUrl: string;
+  urlMatches: boolean;
+  pendingUpdateCount: number;
+  staleTelegramError: boolean;
+  telegramError: string | null;
+  telegramErrorDate: number | null;
+  telegramErrorAgeHours: number | null;
+  repaired: boolean;
+  repairedUrl: string | null;
+  kind: ProbeKind;
+  detail: string;
+  checkedAt: string;
+  probes: ProbeResult[];
+};
+
+const WEBHOOK_PATH = "/api/telegram/webhook";
+
+// Le dashboard interroge /api/diagnostics toutes les 30 s : sonder l'endpoint
+// public à chaque fois déclencherait une invocation serveur de plus à chaque
+// poll. Cache court (2 min) — la détection d'une panne reste quasi immédiate.
+const PROBE_TTL_MS = 120_000;
+const probeCache = new Map<string, { at: number; probe: ProbeResult }>();
+
+// Une réparation qui échoue ne doit pas être retentée à chaque poll (Telegram
+// refuse de ré-enregistrer à l'identique : « Webhook is already set »).
+const REPAIR_THROTTLE_MS = 600_000;
+let lastRepairAt = 0;
+
+async function cachedProbe(url: string, secret: string, timeoutMs: number): Promise<ProbeResult> {
+  const hit = probeCache.get(url);
+  if (hit && Date.now() - hit.at < PROBE_TTL_MS) return hit.probe;
+  const probe = await probeWebhook(url, secret, timeoutMs);
+  probeCache.set(url, { at: Date.now(), probe });
+  return probe;
+}
+
+function baseOfWebhook(url: string): string {
+  return url.replace(/\/+$/, "").replace(/\/api\/telegram\/webhook$/, "");
+}
+
+/** Bases candidates autorisées : domaine agence + URL détectée (anti-détournement). */
+async function candidateBases(detectedBase?: string): Promise<string[]> {
+  const appBase = (await getSetting("APP_BASE_URL")).trim();
+  const agencyDomain = (await getSetting("AGENCY_DOMAIN")).trim().toLowerCase();
+  const raw = [appBase, agencyDomain ? `https://${agencyDomain}` : "", detectedBase ?? ""];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const r of raw) {
+    if (!r) continue;
+    let u: URL;
+    try {
+      u = new URL(r.startsWith("http") ? r : `https://${r}`);
+    } catch {
+      continue;
+    }
+    if (u.protocol !== "https:") continue;
+    const base = `${u.origin}`.replace(/\/+$/, "");
+    if (seen.has(base)) continue;
+    seen.add(base);
+    out.push(base);
+  }
+  return out;
+}
+
+export async function ensureTelegramWebhookHealth(
+  opts: { detectedBase?: string; repair?: boolean; timeoutMs?: number } = {},
+): Promise<TelegramHealth> {
+  const timeoutMs = opts.timeoutMs ?? 12_000;
+  const checkedAt = new Date().toISOString();
+  const token = await getSetting("TELEGRAM_BOT_TOKEN");
+  const empty = (detail: string, kind: ProbeKind = "network"): TelegramHealth => ({
+    healthy: false,
+    activeUrl: "",
+    registeredUrl: "",
+    expectedUrl: "",
+    urlMatches: false,
+    pendingUpdateCount: 0,
+    staleTelegramError: false,
+    telegramError: null,
+    telegramErrorDate: null,
+    telegramErrorAgeHours: null,
+    repaired: false,
+    repairedUrl: null,
+    kind,
+    detail,
+    checkedAt,
+    probes: [],
+  });
+  if (!token) return empty("Token absent — RIO ne peut pas vous répondre sur Telegram.");
+
+  // Secret du webhook : s'il a disparu, on en regénère un (la réparation
+  // ci-dessous le ré-enregistre côté Telegram).
+  let secret = await getSetting("TELEGRAM_WEBHOOK_SECRET");
+  if (!secret) {
+    const { setSetting } = await import("./settings");
+    secret = `gsd-${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+    await setSetting("TELEGRAM_WEBHOOK_SECRET", secret);
+  }
+
+  const info = await getTelegramWebhookInfo();
+  const registeredUrl = info.ok ? info.info?.url ?? "" : "";
+  const telegramError = info.ok ? info.info?.last_error_message ?? null : null;
+  const telegramErrorDate = info.ok ? info.info?.last_error_date ?? null : null;
+  const pendingUpdateCount = info.ok ? info.info?.pending_update_count ?? 0 : 0;
+
+  const bases = await candidateBases(opts.detectedBase);
+  const probes: ProbeResult[] = [];
+
+  // 1) Sonde de l'URL ENREGISTRÉE : c'est celle que Telegram appelle.
+  if (registeredUrl) probes.push(await cachedProbe(registeredUrl, secret, timeoutMs));
+  // 2) Sonde des candidats canoniques (domaine d'abord), jusqu'à un survivor.
+  for (const base of bases) {
+    const url = `${base}${WEBHOOK_PATH}`;
+    if (probes.some((p) => p.url === url)) continue;
+    const p = await cachedProbe(url, secret, timeoutMs);
+    probes.push(p);
+    if (p.kind === "healthy") break;
+  }
+
+  // 3) Cible de réparation : le premier candidat canonique sain, sinon l'URL
+  //    enregistrée si elle répond encore (ne pas casser un canal qui marche).
+  const candidateUrls = bases.map((b) => `${b}${WEBHOOK_PATH}`);
+  const plan = planRepair({ registeredUrl, candidateUrls, probes });
+
+  // 4) Réparation : URL enregistrée != cible saine → on ré-enregistre.
+  let repaired = false;
+  let repairedUrl: string | null = null;
+  const repairAllowed = Date.now() - lastRepairAt >= REPAIR_THROTTLE_MS;
+  if (opts.repair !== false && repairAllowed && plan.needsRepair && plan.target) {
+    lastRepairAt = Date.now();
+    const res = await registerTelegramWebhook(baseOfWebhook(plan.target));
+    if (res.ok) {
+      repaired = true;
+      repairedUrl = res.url ?? plan.target;
+      const after = await probeWebhook(repairedUrl, secret, timeoutMs);
+      probeCache.set(repairedUrl, { at: Date.now(), probe: after });
+      const idx = probes.findIndex((p) => p.url === registeredUrl);
+      if (idx >= 0) probes[idx] = after;
+      else probes.push(after);
+    }
+  }
+
+  const report = buildHealthReport({
+    registeredUrl: repaired ? repairedUrl ?? registeredUrl : registeredUrl,
+    telegramError,
+    telegramErrorDate,
+    probes,
+    repaired,
+    repairedUrl,
+  });
+
+  const expectedUrl = plan.canonicalHealthy ?? (candidateUrls[0] ?? "");
+  return {
+    ...report,
+    expectedUrl,
+    urlMatches: report.activeUrl ? report.activeUrl === expectedUrl : false,
+    pendingUpdateCount,
+    checkedAt,
+    probes,
+  };
+}
+
 
 // ─────────────────────────────────────────────
 // RIO sur Telegram — chat IA + commandes rapides

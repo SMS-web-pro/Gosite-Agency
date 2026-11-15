@@ -18,7 +18,9 @@ const COMMANDS = [
 ];
 
 type WebhookState = {
-  ok: boolean; expectedUrl?: string; urlMatches?: boolean;
+  ok: boolean; healthy?: boolean; expectedUrl?: string; urlMatches?: boolean;
+  activeUrl?: string; kind?: string; detail?: string; repaired?: boolean;
+  staleTelegramError?: boolean; telegramError?: string | null; telegramErrorAgeHours?: number | null;
   info?: { url: string; pending_update_count?: number; last_error_message?: string; last_error_date?: number; max_connections?: number };
   error?: string;
 };
@@ -40,14 +42,15 @@ export default function TelegramPage() {
       const j = await apiJson<WebhookState>(r);
       if (!j) return;
       setHook(j);
-      // Auto-réparation : si le bot est configuré mais le webhook manquant/incorrect → enregistrement automatique
-      if (j.ok && !j.urlMatches) {
+      // Auto-réparation : si le bot est configuré mais le webhook mort ou
+      // dérive (URL enregistrée qui ne répond plus) → enregistrement.
+      if (j.ok && (!j.healthy || !j.urlMatches)) {
         setRegistering(true);
         const r2 = await fetch("/api/telegram/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-        const j2 = await apiJson<{ ok?: boolean; url?: string }>(r2);
+        const j2 = await apiJson<{ ok?: boolean; url?: string; repaired?: boolean; detail?: string }>(r2);
         setRegistering(false);
         if (j2?.ok) {
-          setToast({ msg: `Webhook enregistré automatiquement → ${j2.url}`, kind: "ok" });
+          setToast({ msg: j2.repaired ? `Webhook réparé → ${j2.url}` : `Webhook enregistré → ${j2.url}`, kind: "ok" });
           const r3 = await fetch("/api/telegram/register");
           setHook(await apiJson<WebhookState>(r3));
         }
@@ -70,8 +73,11 @@ export default function TelegramPage() {
     setRegistering(true);
     try {
       const r = await fetch("/api/telegram/register", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const j = await apiJson<{ ok?: boolean; url?: string; error?: string }>(r);
-      setToast({ msg: j?.ok ? `Webhook enregistré : ${j.url}` : j?.error ?? "Échec d'enregistrement", kind: j?.ok ? "ok" : "err" });
+      const j = await apiJson<{ ok?: boolean; url?: string; error?: string; repaired?: boolean; detail?: string }>(r);
+      setToast({
+        msg: j?.ok ? (j.repaired ? `Webhook réparé → ${j.url}` : `Webhook enregistré → ${j.url}`) : j?.error ?? j?.detail ?? "Échec d'enregistrement",
+        kind: j?.ok ? "ok" : "err",
+      });
       await loadDiag();
     } finally {
       setRegistering(false);
@@ -110,7 +116,7 @@ export default function TelegramPage() {
       </div>
 
       {/* Webhook diagnostics — auto-repair */}
-      <div className="card p-6" style={hook && !hook.urlMatches && hook.ok ? { borderColor: "rgba(251,191,36,.35)" } : {}}>
+      <div className="card p-6" style={hook && hook.ok && !hook.healthy ? { borderColor: "rgba(248,113,113,.35)" } : hook && hook.ok && hook.healthy && !hook.urlMatches ? { borderColor: "rgba(251,191,36,.35)" } : {}}>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="font-display font-bold text-[16px] text-white flex items-center gap-2">
             <Webhook size={16} style={{ color: "var(--cyan)" }} /> État du webhook
@@ -126,7 +132,7 @@ export default function TelegramPage() {
           <p className="text-[12.5px]" style={{ color: "var(--text-faint)" }}>Diagnostic en cours…</p>
         ) : !hook.ok ? (
           <div className="flex items-center gap-2.5 text-[13px]" style={{ color: "var(--amber)" }}>
-            <AlertTriangle size={14} /> {hook.error} — collez le token dans Réglages → Telegram Bot.
+            <AlertTriangle size={14} /> {hook.error ?? "Token absent"} — collez le token dans Réglages → Telegram Bot.
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-[12.5px]">
@@ -137,19 +143,27 @@ export default function TelegramPage() {
               </span>
             </div>
             <div className="flex justify-between gap-4 py-2 border-b" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-              <span className="label-xs">URL attendue (cette app)</span>
-              <span className="font-mono text-[11px] text-right break-all" style={{ color: "var(--text-dim)" }}>{hook.expectedUrl}</span>
+              <span className="label-xs">URL qui répond (sonde réelle)</span>
+              <span className="font-mono text-[11px] text-right break-all" style={{ color: hook.healthy ? "var(--accent)" : "var(--red)" }}>
+                {hook.activeUrl || "injoignable"}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4 py-2 border-b" style={{ borderColor: "rgba(255,255,255,.05)" }}>
+              <span className="label-xs">État du canal</span>
+              <span className="font-mono text-[11px]" style={{ color: hook.healthy ? "var(--accent)" : "var(--red)" }}>
+                {hook.healthy ? "OK — le bot reçoit tes messages" : `MUET — ${hook.kind ?? "?"}`}
+              </span>
             </div>
             <div className="flex justify-between gap-4 py-2 border-b" style={{ borderColor: "rgba(255,255,255,.05)" }}>
               <span className="label-xs">Correspondance</span>
               <span className="font-mono text-[11px]" style={{ color: hook.urlMatches ? "var(--accent)" : "var(--amber)" }}>
-                {hook.urlMatches ? "OK — le bot répond" : "MISMATCH — cliquez « Enregistrer / réparer »"}
+                {hook.urlMatches ? "OK — URL enregistrée = URL servie" : "MISMATCH — cliquez « Enregistrer / réparer »"}
               </span>
             </div>
-            <div className="flex justify-between gap-4 py-2 border-b" style={{ borderColor: "rgba(255,255,255,.05)" }}>
-              <span className="label-xs">File d'attente / dernière erreur</span>
-              <span className="font-mono text-[11px]" style={{ color: hook.info?.last_error_message ? "var(--red)" : "var(--text-dim)" }}>
-                {hook.info?.pending_update_count ?? 0} en attente{hook.info?.last_error_message ? ` · ⚠ ${hook.info.last_error_message}` : " · aucune erreur"}
+            <div className="flex justify-between gap-4 py-2 border-b md:col-span-2" style={{ borderColor: "rgba(255,255,255,.05)" }}>
+              <span className="label-xs">Diagnostic</span>
+              <span className="text-[11.5px] text-right" style={{ color: hook.healthy ? "var(--text-dim)" : "var(--red)" }}>
+                {hook.detail ?? "—"}
               </span>
             </div>
           </div>

@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
   for (const [key, value] of Object.entries(body)) {
     if (!(key in SETTING_KEYS)) continue;
     if (key === "TELEGRAM_WEBHOOK_SECRET") continue; // interne uniquement
+    if (key === "TELEGRAM_HEALTH_CHECK") continue; // horodatage interne du tick
     if (typeof value !== "string" || value.includes("••••")) continue;
     await setSetting(key as SettingKey, value.trim());
     updated.push(key);
