@@ -321,7 +321,14 @@ export async function buildSiteBundle(
     { slot: "about", url: picked.about },
     ...picked.gallery.filter((u) => (seen.has(u) ? false : (seen.add(u), true))).map((url) => ({ slot: "gallery" as const, url })),
   ];
+  const buildStart = Date.now();
   const imgs = await downloadImages(slots, fetchImpl);
+  // Budget Gemini dynamique : le tick tourne dans une fonction serverless de
+  // 60 s max (after()). Images (~20 s) + Gemini (40 s de timeout + repli) =
+  // 68 s → le build était coupé en silence et rejoué à l'infini. On plafonne
+  // Gemini à ce qui reste d'un budget total ~30 s ; au-delà, fallback direct.
+  const geminiBudgetMs = 30_000 - (Date.now() - buildStart);
+  const canGemini = geminiBudgetMs > 10_000;
 
   // 2. Fiche v6 : chemins locaux, endpoint form, services complets (prompt).
   const s6: Record<string, string> = {
@@ -344,13 +351,14 @@ export async function buildSiteBundle(
   const doGemini = geminiImpl ?? geminiCompleteStep;
   let html: string | null = null;
   try {
+    if (!canGemini) throw new Error("budget image épuisé — fallback déterministe");
     const raw = await doGemini({
       system: goldenPrompt(lang),
       user: `${userPromptFor(s6, lang)}\n\n${kickoff}`,
       maxTokens: 32768,
       temperature: 0.55,
-      timeoutMs: 40_000,
-      deadlineMs: 48_000,
+      timeoutMs: Math.min(40_000, geminiBudgetMs),
+      deadlineMs: Math.min(48_000, geminiBudgetMs + 5_000),
     });
     if (raw) {
       const extracted = extractHtml(raw);
