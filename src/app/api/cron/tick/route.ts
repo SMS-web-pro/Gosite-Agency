@@ -1,4 +1,4 @@
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 import { runAutopilotTick } from "@/lib/autopilot";
 import { getSetting } from "@/lib/settings";
 
@@ -24,14 +24,20 @@ async function authorized(req: NextRequest): Promise<boolean> {
   return Boolean(urlKey) && candidates.has(urlKey as string);
 }
 
+// Le pipeline dure jusqu'à 45 s + un déploiement Cloudflare peut dépasser la
+// minute : exécuté en réponse, la fonction mourait en FUNCTION_INVOCATION_TIMEOUT
+// (504) et le tick semblait en panne. `after()` renvoie la réponse tout de
+// suite et laisse le pipeline tourner dans la durée de vie restante de la
+// fonction (60 s max sur Hobby) — les déploiements débordants repartent au
+// tick suivant (le lead reste site_built, sans incrément de failCount).
 export async function GET(req: NextRequest) {
   if (!(await authorized(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const summary = await runAutopilotTick();
-  return NextResponse.json({ ok: true, ...summary });
+  after(async () => { await runAutopilotTick(); });
+  return NextResponse.json({ ok: true, queued: true });
 }
 
 export async function POST(req: NextRequest) {
   if (!(await authorized(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  const summary = await runAutopilotTick();
-  return NextResponse.json({ ok: true, ...summary });
+  after(async () => { await runAutopilotTick(); });
+  return NextResponse.json({ ok: true, queued: true });
 }

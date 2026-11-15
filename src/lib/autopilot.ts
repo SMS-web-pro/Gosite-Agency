@@ -111,6 +111,48 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   const bump = (k: string) => { summary.advanced[k] = (summary.advanced[k] ?? 0) + 1; };
   const deadline = Date.now() + TICK_DEADLINE_MS;
 
+  // ── 0) Garde-fou Telegram : le canal ENTRANT peut mourir sans que rien ne
+  //      se voie (compte d'hébergement bloqué → 402, protection → 401, alias
+  //      mort → 404). On sonde l'endpoint une fois par heure ; si elle ne
+  //      répond pas, on ré-enregistre le webhook et on alerte — l'envoi
+  //      SORTANT marche même quand l'entrant est mort, c'est donc le seul
+  //      canal disponible pour prévenir l'opérateur. En TÊTE de tick : c'est
+  //      la panne la plus grave, elle passe avant le pipeline.
+  try {
+    const last = await getSetting("TELEGRAM_HEALTH_CHECK");
+    if (!last || Date.now() - new Date(last).getTime() >= 3600_000) {
+      await db
+        .insert(settings)
+        .values({ key: "TELEGRAM_HEALTH_CHECK", value: new Date().toISOString(), updatedAt: new Date() })
+        .onConflictDoUpdate({ target: settings.key, set: { value: new Date().toISOString(), updatedAt: new Date() } });
+      const { ensureTelegramWebhookHealth } = await import("./telegram");
+      const health = await ensureTelegramWebhookHealth({ repair: true, timeoutMs: 5000 });
+      if (!health.healthy) {
+        summary.errors.push(`telegram_webhook: ${health.kind}`);
+        await logActivity({
+          agentKey: "telegram", action: "webhook_muet",
+          message: `Canal Telegram entrant muet — ${health.detail}`,
+          level: "error",
+        });
+        await notifyTelegram(
+          `🛑 <b>Canal Telegram entrant muet</b>\n${health.detail}\n` +
+            `Je continue à t'écrire (l'envoi sortant fonctionne) mais je n'entends plus tes messages.`,
+        );
+      } else if (health.repaired) {
+        await logActivity({
+          agentKey: "telegram", action: "webhook_repare",
+          message: `Webhook Telegram réparé automatiquement → ${health.repairedUrl}.`,
+          level: "warn",
+        });
+        await notifyTelegram(
+          `🔧 <b>Webhook Telegram réparé</b>\nRé-enregistré sur <code>${health.repairedUrl}</code> — je recommence à recevoir tes messages.`,
+        );
+      }
+    }
+  } catch (err) {
+    summary.errors.push(`telegram_health: ${err instanceof Error ? err.message : "?"}`);
+  }
+
   // Auto-réparation : un lead resté en "contacting" (crash en pleine tentative
   // d'envoi) retourne en "deployed" après 15 min d'inactivité.
   await db.update(prospects)
@@ -175,6 +217,11 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     const batch = await take(step.stage, step.limit);
     for (const p of batch) {
       if (Date.now() > deadline) { summary.deadlineReached = true; break; }
+      // Un déploiement Cloudflare peut consommer la minute entière à lui seul :
+      // lancé trop tard, il déborde de la durée de vie de la fonction (60 s)
+      // et tue le tick en FUNCTION_INVOCATION_TIMEOUT. Le lead reste site_built
+      // et repartira au tick suivant, à jeun.
+      if (step.agent === "deployer" && Date.now() > deadline - 25_000) { summary.deadlineReached = true; break; }
       try {
         await step.fn(p);
         // Succès : remet le compteur d'échecs à zéro (uniquement si utile).
