@@ -33,21 +33,24 @@ export async function GET(req: NextRequest) {
   let deployed = "";
   let error = "";
   try {
-    const mapped = await db.select().from(prospects).where(eq(prospects.stage, "mapped")).orderBy(asc(prospects.createdAt)).limit(1);
-    if (mapped[0]) {
-      await buildProspectSite(mapped[0]);
-      built = String(mapped[0].id);
+    // Déployer D'ABORD (rapide, ~15-20 s) : un site_built passe en ligne, un
+    // bundle obsolète est démôté au coder (instantané). Le build vient ensuite
+    // si le budget le permet — chaque appel avance ainsi sur DEUX fronts.
+    const sb = await db.select().from(prospects).where(eq(prospects.stage, "site_built")).orderBy(asc(prospects.createdAt)).limit(1);
+    if (sb[0]) {
+      await deployProspectSite(sb[0]);
+      deployed = String(sb[0].id);
     }
-    // Un build peut consommer ~30 s (budget Gemini dynamique) : ne lancer un
-    // déploiement Cloudflare que s'il reste de la marge dans les 60 s.
+    // Un build peut consommer ~30 s (budget Gemini dynamique) : ne le lancer
+    // que s'il reste de la marge dans les 60 s.
     if (Date.now() - t0 < 25_000) {
-      const sb = await db.select().from(prospects).where(eq(prospects.stage, "site_built")).orderBy(asc(prospects.createdAt)).limit(1);
-      if (sb[0]) {
-        await deployProspectSite(sb[0]);
-        deployed = String(sb[0].id);
+      const mapped = await db.select().from(prospects).where(eq(prospects.stage, "mapped")).orderBy(asc(prospects.createdAt)).limit(1);
+      if (mapped[0]) {
+        await buildProspectSite(mapped[0]);
+        built = String(mapped[0].id);
       }
     }
-  } catch (err) {
+} catch (err) {
     error = err instanceof Error ? err.message.slice(0, 160) : "?";
   }
   return NextResponse.json({ ok: !error, built, deployed, error, ms: Date.now() - t0 });
