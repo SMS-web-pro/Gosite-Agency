@@ -7,6 +7,7 @@ import {
   normalizeMessageIds,
   coerceInboundDecision,
   sanitizeReplyUrls,
+  ensureLinksInReply,
   shouldIgnoreShortUnmatched,
 } from "./_lib/inbound.ts";
 
@@ -76,6 +77,19 @@ const san = sanitizeReplyUrls("Voir https://evil.com/x et https://whop.com/pay/a
 check("sanitize: url hors whitelist retiree", !san.includes("evil.com"));
 check("sanitize: url whitelist conservee", san.includes("https://whop.com/pay/abc"));
 check("sanitize: cap 2000", sanitizeReplyUrls("x".repeat(3000), []).length <= 2000);
+
+// Injection déterministe des liens (le LLM les annonce sans les insérer)
+const replyBrut = "Bonjour Kevin, voici le lien de paiement sécurisé pour votre site :";
+const avecLiens = ensureLinksInReply(replyBrut, { paymentUrl: "https://whop.com/checkout/ch_X/", siteUrl: "https://sayfit.gosite.digital", lang: "fr" });
+check("liens: paiement ajoute si absent", avecLiens.includes("https://whop.com/checkout/ch_X/"));
+check("liens: site ajoute si absent", avecLiens.includes("https://sayfit.gosite.digital"));
+check("liens: libelle paiement", avecLiens.includes("Lien de paiement sécurisé"));
+const dejaLa = ensureLinksInReply("Payez ici : https://whop.com/checkout/ch_X/", { paymentUrl: "https://whop.com/checkout/ch_X/", siteUrl: null });
+check("liens: pas de doublon", dejaLa.split("ch_X").length - 1 === 1);
+const enLiens = ensureLinksInReply("Here is the payment:", { paymentUrl: "https://whop.com/checkout/ch_X/", siteUrl: null, lang: "en" });
+check("liens: libelle anglais", enLiens.includes("Secure payment link"));
+const sainEnsemble = sanitizeReplyUrls(avecLiens, ["https://whop.com/checkout/ch_X/", "https://sayfit.gosite.digital"]);
+check("liens: survivent au sanitize", sainEnsemble.includes("https://whop.com/checkout/ch_X/") && sainEnsemble.includes("https://sayfit.gosite.digital"));
 
 // Seuil de longueur : un client matché n'est jamais ignoré
 check("seuil: client matche court", !shouldIgnoreShortUnmatched("Oui", true));

@@ -125,6 +125,24 @@ export function sanitizeReplyUrls(reply: string, allowedUrls: string[]): string 
   return out;
 }
 
+// Le LLM annonce souvent « voici le lien de paiement : » puis oublie l'URL
+// dans son texte. Injection déterministe des liens de paiement et du site —
+// appelée AVANT sanitizeReplyUrls (qui ne garde ensuite que nos URL).
+export function ensureLinksInReply(
+  reply: string,
+  links: { paymentUrl?: string | null; siteUrl?: string | null; lang?: string | null },
+): string {
+  let out = (reply ?? "").trim();
+  const en = links.lang === "en";
+  if (links.paymentUrl && !out.includes(links.paymentUrl)) {
+    out += `\n\n${en ? "Secure payment link" : "Lien de paiement sécurisé"} : ${links.paymentUrl}`;
+  }
+  if (links.siteUrl && !out.includes(links.siteUrl)) {
+    out += `\n${en ? "Your site preview" : "Votre site"} : ${links.siteUrl}`;
+  }
+  return out;
+}
+
 // Un client rattaché n'est jamais ignoré pour cause de message court (« Oui »).
 // Le seuil ne sert qu'à écarter le bruit des adresses inconnues.
 export function shouldIgnoreShortUnmatched(text: string, matched: boolean): boolean {

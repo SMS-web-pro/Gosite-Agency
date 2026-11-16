@@ -14,6 +14,7 @@ import {
   normalizeMessageIds,
   coerceInboundDecision,
   sanitizeReplyUrls,
+  ensureLinksInReply,
   shouldIgnoreShortUnmatched,
   RATE_PER_ADDRESS_24H,
   type InboundHeaders,
@@ -253,8 +254,13 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     }
   }
 
-  // Anti prompt-injection : seules nos URL peuvent sortir.
-  const reply = sanitizeReplyUrls(parsed.reply, [paymentUrl, p.deployedUrl ?? ""].filter(Boolean));
+  // Anti prompt-injection : seules nos URL peuvent sortir. Et le LLM annonce
+  // parfois « voici le lien » sans l'insérer : injection déterministe du lien
+  // de paiement et du site AVANT le sanitize.
+  const reply = sanitizeReplyUrls(
+    ensureLinksInReply(parsed.reply, { paymentUrl, siteUrl: p.deployedUrl, lang }),
+    [paymentUrl, p.deployedUrl ?? ""].filter(Boolean),
+  );
   const lastOut = await db.select({ subject: emails.subject }).from(emails).where(eq(emails.prospectId, p.id)).orderBy(desc(emails.createdAt)).limit(1);
   const subject = `Re: ${lastOut[0]?.subject || row.subject || "Votre site web"}`;
 

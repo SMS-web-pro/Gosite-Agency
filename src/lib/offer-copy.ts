@@ -13,8 +13,9 @@ const POLLUTED = /%|gratuit/i;
 
 /** Nettoie la proposition LLM : toute phrase polluée est supprimée entière
  *  (le coerce retombera sur le fallback), les bullets saines sont gardées. */
-export function sanitizeCopyRaw(raw: SalesCopyRaw | null): SalesCopyRaw {
-  if (!raw) return {};
+export function sanitizeCopyRaw(raw: SalesCopyRaw | null): { subject: string; hook: string; bullets: string[]; closing: string } {
+  const empty = { subject: "", hook: "", bullets: [] as string[], closing: "" };
+  if (!raw) return empty;
   const clean = (v: unknown): string => (typeof v === "string" && !POLLUTED.test(v) ? v.trim() : "");
   const bullets = Array.isArray(raw.bullets)
     ? raw.bullets.filter((b): b is string => typeof b === "string" && b.trim().length > 0 && !POLLUTED.test(b))
