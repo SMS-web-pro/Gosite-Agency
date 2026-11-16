@@ -339,7 +339,7 @@ function renderEmailText(opts: {
   }
   lines.push(
     "",
-    `${pack.howTitle} :`,
+    `${pack.howTitle}${opts.lang === "en" ? ":" : " :"}`,
     ...pack.howSteps.map((s, i) => `${i + 1}. ${s}`),
     "",
     `${pack.offerIntro} ${p.businessName}`,

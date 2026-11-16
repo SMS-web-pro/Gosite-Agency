@@ -7,9 +7,9 @@ export type SalesCopyRaw = { subject?: string; hook?: string; bullets?: string[]
 export type SalesCopy = { subject: string; hook: string; bullets: string[]; offerTitle: string; cta: string; closing: string };
 
 /** Ce qui fait qu'une phrase n'est pas vérifiable : un pourcentage ou une
- *  promesse de gratuité. « Gratuit » est réservé aux inclusions RÉELLES de
- *  l'offre (domaine, hébergement, support), écrites par le template. */
-const POLLUTED = /%|gratuit/i;
+ *  promesse de gratuité (fr « gratuit », en « free » — l'offre est payante,
+ *  « gratuit » est réservé aux inclusions RÉELLES écrites par le template). */
+const POLLUTED = /%|gratuit|\bfree\b/i;
 
 /** Nettoie la proposition LLM : toute phrase polluée est supprimée entière
  *  (le coerce retombera sur le fallback), les bullets saines sont gardées. */

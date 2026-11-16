@@ -58,7 +58,9 @@ export async function createWhopPayment(p: Prospect): Promise<PaymentResult> {
   const apiKey = await getSetting("WHOP_API_KEY");
   const planId = await getSetting("WHOP_PLAN_ID");
   const price = (await getSetting("OFFER_PRICE")) || "259";
-  const currency = (await getSetting("OFFER_CURRENCY")) || "EUR";
+  // OFFER_PRICE est en USD de base (cf. fx.OFFER_BASE_CURRENCY) : le repli est
+  // aligné, jamais « EUR » hérité — sinon l'email dirait $259 et Whop chargerait 259 €.
+  const currency = (await getSetting("OFFER_CURRENCY")) || "USD";
 
   if (!apiKey || !planId) {
     const { allowSimulation } = await import("./settings");

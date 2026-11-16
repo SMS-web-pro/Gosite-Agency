@@ -23,7 +23,8 @@ check("gratuit supprimé du subject", sanitizeCopyRaw({ subject: "Voir mon site 
 check("subject sain conservé", sanitizeCopyRaw({ subject: "Un site prêt pour Étoile" }).subject === "Un site prêt pour Étoile");
 check("hook pollué supprimé", sanitizeCopyRaw({ hook: "Doublez vos ventes avec 50% de visiteurs" }).hook === "");
 check("closing sain conservé", sanitizeCopyRaw({ closing: "Répondez à cet email." }).closing === "Répondez à cet email.");
-check("null -> objet vide", Object.keys(sanitizeCopyRaw(null) ?? {}).length === 0 || sanitizeCopyRaw(null) !== undefined);
+check("null -> objet vide", sanitizeCopyRaw(null) !== null && sanitizeCopyRaw(null)!.subject === "" && sanitizeCopyRaw(null)!.bullets.length === 0);
+check("« free » EN supprimé", sanitizeCopyRaw({ subject: "Get a free website for your gym" }).subject === "" && sanitizeCopyRaw({ bullets: ["A free website", "b2"] }).bullets!.join("|") === "b2");
 
 // ── coerceCopy : valeurs déterministes + replis ──
 check("offerTitle LLM ignoré", coerceCopy({ offerTitle: "SUPER PROMO", cta: "ACHTEZ" }, F).offerTitle === "Notre offre");
