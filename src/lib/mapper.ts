@@ -43,7 +43,9 @@ export function buildClientSheet(p: Prospect): Record<string, string> {
     PHONE: p.phone ?? "",
     PHONE_LINK: phoneDigits ? `+${phoneDigits}` : "",
     EMAIL: p.email ?? "none",
-    ADDRESS: p.address ?? "",
+    // Pas de rue inventée : si Serper n'a pas d'adresse, repli honnête
+    // ville + code postal (le template sait rendre ce cas, cf. coder.ts).
+    ADDRESS: p.address || [p.city, p.zip].filter(Boolean).join(", "),
     CITY: city,
     ZIP: p.zip ?? "",
     COUNTRY: p.country ?? "France",
