@@ -259,14 +259,19 @@ export function patchIndexDomain(html: string, fromBase: string, toBase: string)
   return html.replace(rx, toBase);
 }
 
-/** Détecte un bundle obsolète : généré avant le commit v6 (section avis animée,
- *  étoiles `t-star` en cascade). Les vieux bundles sauvés en DB partaient en
- *  prod tels quels — le deployer doit régénérer avant tout déploiement. */
+/** Détecte un bundle obsolète : généré avant le spec v6 complet (topbar,
+ *  trustbar, why, process, étoiles en cascade, FAQ, barre mobile). Les vieux
+ *  bundles sauvés en DB partaient en prod tels quels — le deployer doit
+ *  régénérer avant tout déploiement. TOUS les marqueurs sont requis. */
+const V6_MARKERS = ["topbar", "trustbar", "w-card", "p-step", "faq-item", "t-star", "mobile-bar", "data-reveal", "api/site-form/"];
 export function isStaleSiteBundle(bundle: Record<string, string> | null | undefined, html: string | null | undefined): boolean {
+  const conform = (s: string) => V6_MARKERS.every((m) => s.includes(m));
   if (bundle && Object.keys(bundle).length > 0) {
-    return !Object.values(bundle).some((v) => typeof v === "string" && v.includes("t-star"));
+    const idx = bundle["/index.html"] ?? bundle["index.html"] ?? "";
+    if (idx) return !conform(idx);
+    return !Object.values(bundle).some((v) => typeof v === "string" && conform(v));
   }
-  return !(html ?? "").includes("t-star");
+  return !(html && conform(html));
 }
 
 /** Index de secours déterministe — utilisé quand Gemini échoue. Conforme v6 :
@@ -317,7 +322,8 @@ export function renderFallbackIndex(config: SiteConfig): string {
   const stepsHtml = steps.map((s, i) => `<div class="p-step" data-reveal><div class="p-num">${i + 1}</div><p>${esc(s)}</p></div>`).join("<div class='p-line' aria-hidden='true'></div>");
   const topbar = config.emergency247
     ? `<div class="topbar">${en ? "24/7 Emergency Service · Call" : "Urgences 24h/24 · Appelez le"} <a href="tel:${attr(config.phoneLink)}">${esc(config.phone)}</a></div>`
-    : config.hours ? `<div class="topbar">${esc(config.hours.weekday)}${config.hours.sat ? ` · ${esc(config.hours.sat)}` : ""} · ${en ? "Call" : "Appelez le"} <a href="tel:${attr(config.phoneLink)}">${esc(config.phone)}</a></div>` : "";
+    : config.hours ? `<div class="topbar">${esc(config.hours.weekday)}${config.hours.sat ? ` · ${esc(config.hours.sat)}` : ""} · ${en ? "Call" : "Appelez le"} <a href="tel:${attr(config.phoneLink)}">${esc(config.phone)}</a></div>`
+    : `<div class="topbar">${en ? `Based in ${esc(config.city)} — Call` : `Basés à ${esc(config.city)} — Appelez le`} <a href="tel:${attr(config.phoneLink)}">${esc(config.phone)}</a></div>`;
   const trust = `<section class="trustbar"><div class="wrap trust-in">${config.rating !== null && config.reviewCount !== null ? `<span><strong>${config.rating} ★</strong> · ${config.reviewCount} ${en ? "Google reviews" : "avis Google"}</span>` : ""}<span>${en ? "Residential & Commercial" : "Résidentiel & Commercial"}</span>${config.hours ? `<span>${esc(config.hours.weekday)}</span>` : ""}<span>${esc(config.city)}${config.areas.length > 1 ? ` + ${config.areas.length - 1} ${en ? "nearby cities" : "villes voisines"}` : ""}</span></div></section>`;
   const serviceOptions = config.services.map((s) => `<option>${esc(s.title)}</option>`).join("");
   const title = en ? `${config.name} | ${config.nicheLabel} in ${config.city}` : `${config.name} | ${config.nicheLabel} à ${config.city}`;

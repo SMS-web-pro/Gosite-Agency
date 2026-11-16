@@ -364,7 +364,10 @@ export async function buildSiteBundle(
       const extracted = extractHtml(raw);
       // Validation marqueurs (le prompt les annonce « rejeté si absent ») :
       // un HTML incomplet bascule vers le fallback déterministe.
-      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/", "t-card", "t-star"].every((m) => extracted.includes(m))) {
+      // Validation structure v6 COMPLÈTE : tout marqueur manquant → fallback
+      // déterministe (qui implémente les 14 sections à coup sûr). Sans cette
+      // barre, Gemini livrait des sites amputés (faq/why/process/topbar absents).
+      if (extracted && extracted.length > 8000 && ["data-reveal", "mobile-bar", "api/site-form/", "t-card", "t-star", "trustbar", "w-card", "p-step", "faq-item", "topbar"].every((m) => extracted.includes(m))) {
         html = extracted;
       }
     }
