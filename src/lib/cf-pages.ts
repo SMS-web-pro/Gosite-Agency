@@ -52,16 +52,23 @@ async function cfOk<T>(res: Response, label: string): Promise<T> {
   return j.result as T;
 }
 
-// Crée le project Pages s'il n'existe pas (Direct Upload, branche prod "main").
-async function ensureProject(accountId: string, token: string, projectName: string): Promise<void> {
+// Crée le project Pages s'il n'existe pas (Direct Upload, branche prod "main")
+// et renvoie le SOUS-DOMAINE CANONIQUE du projet (ex: "lifegym-1s9.pages.dev").
+// CF peut suffixer le nom (pris globalement) : le CNAME doit viser ce
+// sous-domaine réel, jamais `<slug>.pages.dev` supposé.
+async function ensureProject(accountId: string, token: string, projectName: string): Promise<string> {
   const base = `${CF_API}/accounts/${accountId}/pages/projects/${projectName}`;
   const get = await fetch(base, { headers: h(token), signal: AbortSignal.timeout(20000) });
-  if (get.ok) return;
-  await cfOk(await fetch(`${CF_API}/accounts/${accountId}/pages/projects`, {
+  if (get.ok) {
+    const j = (await get.json()) as { result?: { subdomain?: string } };
+    return j.result?.subdomain ?? `${projectName}.pages.dev`;
+  }
+  const j = await cfOk<{ subdomain?: string }>(await fetch(`${CF_API}/accounts/${accountId}/pages/projects`, {
     method: "POST", headers: { ...h(token), "Content-Type": "application/json" },
     body: JSON.stringify({ name: projectName, production_branch: "main" }),
     signal: AbortSignal.timeout(20000),
   }), "create project");
+  return j?.subdomain ?? `${projectName}.pages.dev`;
 }
 
 // Upload du bundle (map chemin -> contenu) vers le project Pages et création
@@ -73,7 +80,7 @@ export async function deployToPages(projectName: string, bundle: Record<string, 
   const acc = await cfAccount();
   if (!acc) throw new Error("Cloudflare Pages : CLOUDFLARE_TOKEN / CLOUDFLARE_ACCOUNT_ID requis (Réglages → Cloudflare).");
   const { token, accountId } = acc;
-  await ensureProject(accountId, token, projectName);
+  const subdomain = await ensureProject(accountId, token, projectName);
 
   const files = Object.entries(bundle)
     .filter(([path]) => path !== "vercel.json" && path !== "_headers" && path !== "_redirects")
@@ -114,7 +121,7 @@ export async function deployToPages(projectName: string, bundle: Record<string, 
   fd.append("manifest", JSON.stringify(manifest));
   fd.append("branch", "main");
   await cfOk(await fetch(`${CF_API}/accounts/${accountId}/pages/projects/${projectName}/deployments`, { method: "POST", headers: h(token), body: fd, signal: AbortSignal.timeout(30000) }), "deployments");
-  return { url: `https://${projectName}.pages.dev`, files: files.length };
+  return { url: `https://${subdomain}`, files: files.length };
 }
 
 async function pushBatch(batch: { key: string; value: string; contentType: string }[], jh: Record<string, string>): Promise<void> {
@@ -125,8 +132,8 @@ async function pushBatch(batch: { key: string; value: string; contentType: strin
 // Lie le sous-domaine de l'agence au project. La zone gosite.digital vit dans
 // le même compte Cloudflare. Via l'API, CF ne crée PAS le CNAME tout seul :
 // on POST le domain au project (vérification + certificat auto) PUIS on pose
-// explicitement le CNAME `<slug>.gosite.digital → <slug>.pages.dev` (DNS only,
-// il prime sur le wildcard *.gosite.digital qui pointe encore vers Vercel).
+// explicitement le CNAME `<slug>.gosite.digital → sous-domaine canonique`
+// (DNS only, il prime sur le wildcard *.gosite.digital qui pointe vers Vercel).
 export async function linkPagesDomain(projectName: string, domain: string): Promise<void> {
   const acc = await cfAccount();
   if (!acc) throw new Error("Cloudflare Pages : CLOUDFLARE_TOKEN / CLOUDFLARE_ACCOUNT_ID requis (Réglages → Cloudflare).");
@@ -143,7 +150,9 @@ export async function linkPagesDomain(projectName: string, domain: string): Prom
   const zres = await fetch(`${CF_API}/zones?name=${encodeURIComponent(zone)}`, { headers: h(acc.token), signal: AbortSignal.timeout(15000) });
   const zoneId = ((await zres.json()) as { result?: { id: string }[] }).result?.[0]?.id;
   if (!zoneId) return;
-  const target = `${projectName}.pages.dev`;
+  // Sous-domaine canonique RÉEL du projet (CF peut suffixer : lifegym-1s9).
+  const pj = await cfOk<{ subdomain?: string }>(await fetch(`${CF_API}/accounts/${acc.accountId}/pages/projects/${projectName}`, { headers: h(acc.token), signal: AbortSignal.timeout(15000) }), "get project");
+  const target = pj?.subdomain ?? `${projectName}.pages.dev`;
   const existing = await fetch(`${CF_API}/zones/${zoneId}/dns_records?type=CNAME&name=${encodeURIComponent(domain)}`, { headers: h(acc.token), signal: AbortSignal.timeout(15000) });
   const present = (((await existing.json()) as { result?: { content: string; proxied?: boolean }[] }).result ?? []).some((r) => r.content === target && r.proxied === false);
   if (present) return;
