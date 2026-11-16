@@ -553,17 +553,37 @@ fetch(form.action,{method:"POST",headers:{"content-type":"application/json"},bod
 }
 
 /** Checklist client dérivée de la config — injectée dans l'email de livraison.
- *  Jamais un fait inventé : chaque item = une donnée manquante à fournir. */
+ *  Jamais un fait inventé : chaque item = une donnée manquante à fournir.
+ *  Vocabulaire niche-NEUTRE : cette liste part à tous les métiers. */
 export function generateTodoList(config: SiteConfig): string[] {
   const en = config.lang === "en";
   const todo: string[] = [];
   const photos = 1 + 1 + config.images.gallery.length;
-  todo.push(en ? `Replace the ${photos} placeholder photos (hero, about, gallery) with your own job photos — send them and we swap them the same day.` : `Remplacez les ${photos} photos génériques (héros, about, galerie) par vos propres photos de chantier — envoyez-les et nous les intégrons le jour même.`);
+  todo.push(en ? `Replace the ${photos} placeholder photos (hero, about, gallery) with your own photos — send them and we swap them the same day.` : `Remplacez les ${photos} photos de démonstration (héros, about, galerie) par vos propres photos — envoyez-les et nous les intégrons le jour même.`);
   if (!config.hours || !/24/.test(config.hours.weekday)) todo.push(en ? "Confirm your opening hours and emergency policy (currently shown from your Google listing)." : "Confirmez vos horaires et votre politique d'urgence (actuellement issus de votre fiche Google).");
-  todo.push(en ? "Send your license number and insurance certificate to display them on the trust bar." : "Envoyez votre numéro de licence et votre attestation d'assurance pour les afficher dans la barre de confiance.");
+  todo.push(en ? "Send any legal details you want displayed, if applicable (license, insurance, registration number)." : "Envoyez vos informations légales à afficher, si applicable (licence, assurance, numéro d'enregistrement).");
   if (config.rating === null) todo.push(en ? "No Google rating found — send your Google Business Profile URL so we can show real reviews." : "Aucune note Google trouvée — envoyez l'URL de votre fiche Google Business pour afficher vos vrais avis.");
   else todo.push(en ? "Send 3 short customer reviews (or your Google Business Profile URL) to feature real testimonials." : "Envoyez 3 courts avis clients (ou l'URL de votre fiche Google) pour afficher de vrais témoignages.");
   todo.push(en ? "Optional: your logo files (SVG/PNG) to replace the generated monogram favicon." : "Optionnel : vos fichiers logo (SVG/PNG) pour remplacer le favicon monogramme généré.");
   todo.push(en ? "Optional: add Cloudflare Turnstile to the form for extra spam protection." : "Optionnel : ajouter Cloudflare Turnstile au formulaire pour une protection anti-spam renforcée.");
   return todo;
+}
+
+/** Ce que le site contient DÉJÀ — chaque ligne est un fait du bundle rendu
+ *  (index, pages services, galerie, formulaire, JSON-LD, privacy/terms).
+ *  Injectée dans l'email d'offre : le client voit ce qu'il achète, sans
+ *  invention. Pur. */
+export function generateIncludedFeatures(config: SiteConfig): string[] {
+  const en = config.lang === "en";
+  const feats: string[] = [];
+  feats.push(en ? "A complete homepage built around your business" : "Une page d'accueil complète à votre image");
+  if (config.services.length)
+    feats.push(en ? `All ${config.services.length} of your services detailed, each with its own page` : `Vos ${config.services.length} services détaillés, chacun avec sa page`);
+  if (config.images.gallery.length)
+    feats.push(en ? "A photo gallery to showcase your work" : "Une galerie photos pour montrer votre savoir-faire");
+  feats.push(en ? "A contact form that sends customer requests straight to you" : "Un formulaire de contact qui vous envoie les demandes directement");
+  feats.push(en ? "A flawless display on mobile, tablet and desktop" : "Un affichage parfait sur mobile, tablette et ordinateur");
+  feats.push(en ? "Local Google SEO: business listing, hours, map" : "Votre référencement local Google : fiche, horaires, carte");
+  feats.push(en ? "Legal pages included (privacy, terms)" : "Vos mentions légales incluses");
+  return feats;
 }
