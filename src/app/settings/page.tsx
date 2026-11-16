@@ -83,8 +83,9 @@ const GROUPS: Group[] = [
     fields: [
       { key: "AGENCY_DOMAIN", label: "Domaine agence", placeholder: "gosite.digital" },
       { key: "AGENCY_ADDRESS", label: "Adresse légale (footer emails)", placeholder: "12 rue Exemple, 75000 Ville", hint: "Mention obligatoire dans les emails commerciaux (CAN-SPAM / LCEN)" },
-      { key: "OFFER_PRICE", label: "Prix de l'offre", placeholder: "490" },
-      { key: "OFFER_CURRENCY", label: "Devise", placeholder: "EUR / MAD / USD" },
+      { key: "OFFER_PRICE", label: "Prix de l'offre (année 1)", placeholder: "259" },
+      { key: "OFFER_CURRENCY", label: "Devise", placeholder: "USD / EUR / MAD", hint: "Devise de base de l'offre — convertie automatiquement dans celle du lead" },
+      { key: "RENEWAL_PRICE", label: "Renouvellement annuel (année 2)", placeholder: "45" },
     ],
   },
   {

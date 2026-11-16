@@ -57,7 +57,7 @@ export async function tryEndpoint(
 export async function createWhopPayment(p: Prospect): Promise<PaymentResult> {
   const apiKey = await getSetting("WHOP_API_KEY");
   const planId = await getSetting("WHOP_PLAN_ID");
-  const price = (await getSetting("OFFER_PRICE")) || "490";
+  const price = (await getSetting("OFFER_PRICE")) || "259";
   const currency = (await getSetting("OFFER_CURRENCY")) || "EUR";
 
   if (!apiKey || !planId) {

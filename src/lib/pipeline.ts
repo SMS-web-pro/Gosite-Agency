@@ -135,6 +135,10 @@ export async function runScoutMission(
 async function aiQualify(p: Prospect): Promise<{ score: number; insight: string; verdict: "go" | "no-go" } | null> {
   const { agentThinkJson } = await import("./agent-brain");
   const { coerceQualify } = await import("./llm-coerce");
+  const { getSetting } = await import("./settings");
+  const { OFFER_BASE_CURRENCY } = await import("./fx");
+  // Le brief du validator suit le prix réel des Réglages (jamais un montant en dur).
+  const price = parseFloat((await getSetting("OFFER_PRICE")) || "259") || 259;
   // Coercition stricte : un LLM qui renvoie score: "85 pts" ou insight numérique
   // ne doit jamais ni planter l'étape ni écrire une valeur invalide en base.
   return coerceQualify(
@@ -142,7 +146,7 @@ async function aiQualify(p: Prospect): Promise<{ score: number; insight: string;
       agent: "validator",
       task: "qualification",
       instruction:
-        "Évalue le potentiel commercial de ce prospect pour une offre de site vitrine à ~490€. " +
+        `Évalue le potentiel commercial de ce prospect pour une offre de site vitrine à ~${price} ${OFFER_BASE_CURRENCY}. ` +
         "Prends en compte : preuve sociale (note/avis), type de commerce (un indépendant décide vite, une chaîne non), " +
         "absence de site, capacité à payer. Donne un score de 0 à 100 et un verdict. " +
         'Réponds en JSON : {"score": number, "insight": "une phrase d\'analyse", "verdict": "go"|"no-go"}',
@@ -651,22 +655,9 @@ export async function contactProspect(p: Prospect) {
   }
   let res: Awaited<ReturnType<typeof sendSalesEmail>>;
   try {
-    // v6 : checklist client dérivée du bundle persisté (photos manquantes,
-    // avis, licence…) injectée dans l'email de livraison.
-    let todoList: string[] = [];
-    if (p.siteBundle) {
-      const { buildSiteConfig } = await import("./site-config");
-      const { generateTodoList } = await import("./bundle");
-      const config = buildSiteConfig(p.clientData ?? {}, p.id);
-      const b = p.siteBundle;
-      config.images = {
-        hero: b["images/hero.jpg"] ? "images/hero.jpg" : "",
-        about: b["images/about.jpg"] ? "images/about.jpg" : "",
-        gallery: Array.from({ length: 6 }, (_, i) => (b[`images/work-${i + 1}.jpg`] ? `images/work-${i + 1}.jpg` : "")).filter(Boolean),
-      };
-      todoList = generateTodoList(config);
-    }
-    res = await sendSalesEmail(p, preview, todoList);
+    // L'email d'offre embarque désormais tout : inclusions réelles du site,
+    // « comment ça marche », offre détaillée convertie dans la devise du lead.
+    res = await sendSalesEmail(p, preview);
   } catch (err) {
     // Libère le lead pour une nouvelle tentative ultérieure.
     await db.update(prospects).set({ stage: "deployed", updatedAt: new Date() }).where(eq(prospects.id, p.id));
