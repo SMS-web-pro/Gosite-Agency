@@ -1,9 +1,13 @@
 // Saler — emailing commercial professionnel.
 // Copy en 2 passes (rédacteur PAS → directeur commercial critique), multilingue fr/en,
-// template d'agence responsive. Sans clé Brevo : envoi simulé et journalisé.
+// template d'agence avec inclusions réelles du site généré, « comment ça marche »
+// et offre détaillée convertie dans la devise du lead (fx). Sans clé Brevo :
+// envoi simulé et journalisé.
 
-import { getSetting } from "./settings";
+import { getSetting, setSetting } from "./settings";
 import { injectPixel, linkifyEscaped, newEmailToken, trackifyText, wrapLinks } from "./track";
+import { coerceCopy, sanitizeCopyRaw, type SalesCopy, type SalesCopyRaw } from "./offer-copy";
+import { displayOffer, resolveDisplayCurrency, type Rates } from "./fx";
 import type { Prospect } from "@/db/schema";
 
 /** Base d'URL absolue pour les liens de tracking (pixel + clics). */
@@ -43,6 +47,15 @@ type LangPack = {
   offerTitleFallback: string;
   cta: string;
   directLinkLabel: string;
+  includedTitle: string;
+  howTitle: string;
+  howSteps: [string, string, string];
+  domainIncluded: string;
+  hostingIncluded: string;
+  supportIncluded: string;
+  renewalLabel: string;
+  renewalSuffix: string;
+  ctaLine: string;
   proof: (p: Prospect) => string | null;
   stopLine: string;
   signature: string;
@@ -61,6 +74,19 @@ const LANG_PACKS: Record<Lang, LangPack> = {
     offerTitleFallback: "Notre offre",
     cta: "Voir votre site",
     directLinkLabel: "Lien direct :",
+    includedTitle: "Ce que votre site inclut déjà",
+    howTitle: "Comment ça marche",
+    howSteps: [
+      "Vous répondez à cet email — une phrase suffit.",
+      "On finalise avec vos informations et votre site est en ligne sous 48 h.",
+      "Un seul paiement, quand vous êtes prêt.",
+    ],
+    domainIncluded: "Nom de domaine inclus 1 an",
+    hostingIncluded: "Hébergement inclus 1 an",
+    supportIncluded: "Support & modifications : 3 mois inclus",
+    renewalLabel: "Année suivante",
+    renewalSuffix: "/an — domaine + hébergement",
+    ctaLine: "Une réponse à cet email suffit pour démarrer.",
     proof: (p) =>
       p.rating && Number(p.rating) > 0 ? `Note Google : ${p.rating}/5 · ${p.reviewCount ?? 0} avis publics` : null,
     stopLine:
@@ -74,11 +100,11 @@ const LANG_PACKS: Record<Lang, LangPack> = {
       return `${base} Ce qui manque à cette réputation : un endroit en ligne où vos clients peuvent vous trouver et vous appeler.`;
     },
     fallbackBullets: (p) => [
-      `Un site complet à votre image, déjà créé pour ${p.businessName}`,
-      "Visible sur Google, parfait sur mobile, formulaire d'appel déjà intégré",
+      `Votre site ${p.businessName} est déjà créé et consultable maintenant`,
+      "Vos services, vos horaires et votre formulaire d'appel au même endroit",
       "Votre propre nom de domaine — le site vous appartient, sans abonnement",
     ],
-    fallbackClosing: "Jetez un œil, cela prend deux minutes — une réponse à cet email suffit pour la suite.",
+    fallbackClosing: "Regardez le site — si ça vous convient, une réponse à cet email suffit pour démarrer.",
   },
   en: {
     brandSub: "Your online presence, delivered turnkey",
@@ -88,6 +114,19 @@ const LANG_PACKS: Record<Lang, LangPack> = {
     offerTitleFallback: "Our offer",
     cta: "View your site",
     directLinkLabel: "Direct link:",
+    includedTitle: "What your site already includes",
+    howTitle: "How it works",
+    howSteps: [
+      "You reply to this email — one sentence is enough.",
+      "We finalize with your details and your site goes live within 48 hours.",
+      "One single payment, when you're ready.",
+    ],
+    domainIncluded: "Domain name included for 1 year",
+    hostingIncluded: "1 year of hosting included",
+    supportIncluded: "Support & updates: first 3 months included",
+    renewalLabel: "Next year",
+    renewalSuffix: "/year — domain + hosting",
+    ctaLine: "A reply to this email is all it takes to get started.",
     proof: (p) =>
       p.rating && Number(p.rating) > 0 ? `Google rating: ${p.rating}/5 · ${p.reviewCount ?? 0} public reviews` : null,
     stopLine:
@@ -101,20 +140,21 @@ const LANG_PACKS: Record<Lang, LangPack> = {
       return `${base} What that reputation is missing: a place online where your customers can find you and call you.`;
     },
     fallbackBullets: (p) => [
-      `A complete website already built around ${p.businessName}`,
-      "Visible on Google, flawless on mobile, contact forms built in",
+      `Your website for ${p.businessName} is already built and viewable right now`,
+      "Your services, hours and contact form in one place",
       "Your own domain name — the site is yours, no subscription",
     ],
-    fallbackClosing: "Have a look, it takes two minutes — a reply to this email is all it takes.",
+    fallbackClosing: "Have a look — if it works for you, a reply to this email is all it takes to get started.",
   },
 };
 
 /* ─────────── Copy IA en 2 passes ─────────── */
 
-type SalesCopyRaw = { subject?: string; hook?: string; bullets?: string[]; offerTitle?: string; cta?: string; closing?: string };
-export type SalesCopy = { subject: string; hook: string; bullets: string[]; offerTitle: string; cta: string; closing: string };
+// Le LLM ne rédige QUE subject/hook/bullets/closing : le prix, les inclusions,
+// les étapes et le CTA sont déterministes (template + fx) — aucune invention
+// possible sur l'offre elle-même.
 
-async function aiSalesCopy(p: Prospect, price: string, currency: string, lang: Lang): Promise<SalesCopy | null> {
+async function aiSalesCopy(p: Prospect, lang: Lang): Promise<SalesCopy> {
   const { agentThinkJson } = await import("./agent-brain");
   const sheet = (p.clientData ?? {}) as Record<string, string>;
   const facts =
@@ -125,26 +165,24 @@ City/Country: ${p.city ?? "—"}, ${p.country ?? "—"}
 Google rating: ${p.rating ?? "—"} /5, ${p.reviewCount ?? 0} reviews
 Selling angle (sheet): ${sheet.SELLING_ANGLE ?? "—"}
 Website tagline: ${sheet.TAGLINE ?? "—"}
-Potential analysis: ${p.aiInsight ?? "—"}
-Offer: complete website for ${price} ${currency} all-inclusive, live within 48h, no subscription`
+Potential analysis: ${p.aiInsight ?? "—"}`
       : `Commerce: ${p.businessName}
 Type: ${p.businessType}
 Ville/Pays: ${p.city ?? "—"}, ${p.country ?? "—"}
 Note Google: ${p.rating ?? "—"} /5, ${p.reviewCount ?? 0} avis
 Angle de vente (fiche): ${sheet.SELLING_ANGLE ?? "—"}
 Accroche du site créé: ${sheet.TAGLINE ?? "—"}
-Analyse du potentiel: ${p.aiInsight ?? "—"}
-Offre: site vitrine complet pour ${price} ${currency} tout compris, mise en ligne sous 48h, sans abonnement`;
+Analyse du potentiel: ${p.aiInsight ?? "—"}`;
 
   const brief =
     lang === "en"
-      ? "Write a cold outreach email in NATIVE US ENGLISH proposing a website that has ALREADY BEEN BUILT for this business. Persona: a human, direct and respectful professional (no first names, polite 'you'). Framework PAS: Problem (a verifiable fact: their Google rating/review count and the absence of a website), Agitate (missed calls, customers choosing competitors), Solution (their site already exists, live within 48h, one all-inclusive price). One exclamation mark maximum in the whole email. No invented testimonials, no invented statistics, no 'I hope this finds you well'."
-      : "Rédige un email de prospection à froid en français pour proposer un site vitrine DÉJÀ CRÉÉ à ce commerce. Ton : humain, direct, respectueux (vouvoiement obligatoire). Méthode PAS : Problème (un fait vérifiable : note Google, nombre d'avis, absence de site), Agitation (appels manqués, clients qui partent chez le concurrent), Solution (leur site existe déjà, en ligne sous 48h, un prix tout compris). Un seul point d'exclamation maximum sur tout l'email. Aucun témoignage inventé, aucune statistique inventée, pas de « j'espère que vous allez bien ».";
+      ? "Write a cold outreach email in NATIVE US ENGLISH proposing a website that has ALREADY BEEN BUILT for this business. Goal: make them WANT to view the site and reply. Persona: a human, direct and respectful professional (no first names, polite 'you'), never pushy. Framework PAS, kept light: Problem (one verifiable fact: their Google rating/review count and the absence of a website), Agitate (ONE sentence max: what it costs them daily), Solution (their site already exists, live within 48h). The price, timeline, inclusions and call to action are added by the email template — do NOT write them. FORBIDDEN: percentages and unverifiable statistics, the word 'free', unproven superlatives, fake urgency, invented testimonials, 'I hope this finds you well'. One exclamation mark maximum in the whole email."
+      : "Rédige un email de prospection à froid en français pour proposer un site vitrine DÉJÀ CRÉÉ à ce commerce. Objectif : lui donner envie d'aller voir le site et de répondre. Ton : professionnel, humain, direct, respectueux (vouvoiement obligatoire), jamais insistant. Méthode PAS allégée : Problème (un fait vérifiable : note Google, nombre d'avis, absence de site), Agitation (UNE phrase maximum : ce que ça lui coûte au quotidien), Solution (son site existe déjà, en ligne sous 48h). Le prix, le délai, les inclusions et l'appel à l'action sont ajoutés par le template de l'email — ne les écris PAS. INTERDITS : pourcentages et statistiques non vérifiables, le mot « gratuit », superlatifs non prouvés, fausse urgence, témoignages inventés, « j'espère que vous allez bien ». Un seul point d'exclamation maximum sur tout l'email.";
 
   const jsonShape =
     lang === "en"
-      ? 'Respond ONLY in JSON: {"subject": string (90 characters max, no emoji, mentions the business name), "hook": string (1 to 2 opening sentences), "bullets": string[] (exactly 3 concrete benefits, 90 characters max each, no trailing period), "offerTitle": string (60 characters max, heading of the offer box), "cta": string (28 characters max, button label), "closing": string (1 sentence inviting to view the site or to reply)}'
-      : 'Réponds UNIQUEMENT en JSON : {"subject": string (90 caractères max, sans emoji, mentionne le nom du commerce), "hook": string (1 à 2 phrases d\'ouverture), "bullets": string[] (exactement 3 bénéfices concrets, 90 caractères max chacun, sans point final), "offerTitle": string (60 caractères max, intitulé de l\'encadré offre), "cta": string (28 caractères max, texte du bouton), "closing": string (1 phrase qui invite à regarder le site ou à répondre)}';
+      ? 'Respond ONLY in JSON: {"subject": string (90 characters max, no emoji, mentions the business name), "hook": string (1 to 2 opening sentences), "bullets": string[] (exactly 3 concrete benefits VERIFIABLE for THIS business, 90 characters max each, no trailing period), "closing": string (1 sentence inviting to view the site or to reply)}'
+      : 'Réponds UNIQUEMENT en JSON : {"subject": string (90 caractères max, sans emoji, mentionne le nom du commerce), "hook": string (1 à 2 phrases d\'ouverture), "bullets": string[] (exactement 3 bénéfices concrets ET vérifiables pour CE commerce, 90 caractères max chacun, sans point final), "closing": string (1 phrase qui invite à regarder le site ou à répondre)}';
 
   const pass1 = await agentThinkJson<SalesCopyRaw>({
     agent: "saler",
@@ -155,7 +193,6 @@ Offre: site vitrine complet pour ${price} ${currency} tout compris, mise en lign
     temperature: 0.8,
     lang,
   });
-  if (!pass1) return null;
 
   const pass2 = await agentThinkJson<SalesCopyRaw>({
     agent: "saler",
@@ -172,27 +209,16 @@ Offre: site vitrine complet pour ${price} ${currency} tout compris, mise en lign
     lang,
   });
 
-  return coerceCopy(pass2 ?? pass1, lang, p);
-}
-
-/** Validation/défauts : chaque valeur LLM invalide retombe sur le pack, jamais "undefined". */
-function coerceCopy(raw: SalesCopyRaw | null, lang: Lang, p: Prospect): SalesCopy {
   const pack = LANG_PACKS[lang];
-  const str = (v: unknown, max: number): string => (typeof v === "string" ? v.trim().slice(0, max) : "");
-  const bullets = Array.isArray(raw?.bullets)
-    ? raw.bullets
-        .filter((b): b is string => typeof b === "string" && b.trim().length > 0)
-        .map((b) => b.trim().slice(0, 120))
-        .slice(0, 4)
-    : [];
-  return {
-    subject: str(raw?.subject, 90) || pack.fallbackSubject(p.businessName),
-    hook: str(raw?.hook, 420) || pack.fallbackHook(p),
-    bullets: bullets.length >= 2 ? bullets : pack.fallbackBullets(p),
-    offerTitle: str(raw?.offerTitle, 60) || pack.offerTitleFallback,
-    cta: str(raw?.cta, 28) || pack.cta,
-    closing: str(raw?.closing, 300) || pack.fallbackClosing,
+  const fallbacks: SalesCopy = {
+    subject: pack.fallbackSubject(p.businessName),
+    hook: pack.fallbackHook(p),
+    bullets: pack.fallbackBullets(p),
+    offerTitle: pack.offerTitleFallback,
+    cta: pack.cta,
+    closing: pack.fallbackClosing,
   };
+  return coerceCopy(sanitizeCopyRaw(pass2 ?? pass1), fallbacks);
 }
 
 /* ─────────── Template d'agence ─────────── */
@@ -206,20 +232,31 @@ function renderEmail(opts: {
   p: Prospect;
   copy: SalesCopy;
   previewUrl: string;
-  price: string;
-  currency: string;
+  offer: { main: string; approx: string | null };
+  renewalOffer: { main: string; approx: string | null };
+  includedFeatures: string[];
   lang: Lang;
   agencyAddress?: string;
 }): string {
   const pack = LANG_PACKS[opts.lang];
   const { copy, p } = opts;
 
-  const bulletsHtml = copy.bullets
-    .map(
-      (b) =>
-        `<tr><td valign="top" style="padding:0 0 12px 0;width:30px"><span style="color:#00A57E;font-weight:800;font-size:15px">✓</span></td><td valign="top" style="padding:0 0 12px 0;font-size:15px;color:#3a3f4a;line-height:1.55">${esc(b)}</td></tr>`
-    )
-    .join("\n      ");
+  const bulletRow = (text: string, size: number) =>
+    `<tr><td valign="top" style="padding:0 0 12px 0;width:30px"><span style="color:#00A57E;font-weight:800;font-size:15px">✓</span></td><td valign="top" style="padding:0 0 12px 0;font-size:${size}px;color:#3a3f4a;line-height:1.55">${esc(text)}</td></tr>`;
+
+  const bulletsHtml = copy.bullets.map((b) => bulletRow(b, 15)).join("\n      ");
+  const includedHtml = opts.includedFeatures.length
+    ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 6px 0"><tr><td style="font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#00A57E">${esc(pack.includedTitle)}</td></tr></table>
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      ${opts.includedFeatures.map((f) => bulletRow(f, 14)).join("\n      ")}
+    </table>`
+    : "";
+
+  const howHtml =
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:24px 0 6px 0"><tr><td style="font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#00A57E">${esc(pack.howTitle)}</td></tr></table>
+    <table role="presentation" cellpadding="0" cellspacing="0">
+      ${pack.howSteps.map((s, i) => `<tr><td valign="top" style="padding:0 0 12px 0;width:34px"><span style="display:inline-block;width:22px;height:22px;line-height:22px;text-align:center;border-radius:11px;background:#00A57E;color:#0B1220;font-size:12px;font-weight:800">${i + 1}</span></td><td valign="top" style="padding:0 0 12px 0;font-size:14.5px;color:#3a3f4a;line-height:1.55">${esc(s)}</td></tr>`).join("\n      ")}
+    </table>`;
 
   const proofText = pack.proof(p);
   const proofHtml = proofText
@@ -242,20 +279,30 @@ function renderEmail(opts: {
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:4px 0 0 0">
       ${bulletsHtml}
     </table>
+    ${includedHtml}
+    ${howHtml}
     ${proofHtml}
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#0B1220;border-radius:14px;margin:8px 0 0 0">
       <tr><td style="padding:24px 28px">
         <div style="font-size:11px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:#00E5A0">${esc(copy.offerTitle)}</div>
         <div style="font-size:16px;font-weight:700;color:#ffffff;margin-top:10px">${esc(pack.offerIntro)} ${esc(p.businessName)}</div>
-        <div style="font-size:30px;font-weight:800;color:#ffffff;margin-top:6px">${esc(opts.price)} <span style="font-size:14px;font-weight:600;color:rgba(255,255,255,.75)">${esc(opts.currency)}</span></div>
-        <div style="margin-top:10px"><span style="display:inline-block;background:rgba(0,229,160,.14);color:#7CFFDC;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:20px">${esc(pack.offerDays)}</span>
+        <div style="font-size:30px;font-weight:800;color:#ffffff;margin-top:6px">${esc(opts.offer.main)}</div>
+        ${opts.offer.approx ? `<div style="font-size:13px;font-weight:600;color:rgba(255,255,255,.66);margin-top:2px">${esc(opts.offer.approx)}</div>` : ""}
+        <div style="margin-top:12px"><span style="display:inline-block;background:rgba(0,229,160,.14);color:#7CFFDC;font-size:12.5px;font-weight:700;padding:6px 12px;border-radius:20px">${esc(pack.offerDays)}</span>
         <span style="display:inline-block;color:rgba(255,255,255,.66);font-size:12.5px;margin-left:8px">${esc(pack.offerAll)}</span></div>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:14px">
+          <tr><td style="padding:0 0 6px 0;font-size:13px;color:#7CFFDC">✓ ${esc(pack.domainIncluded)}</td></tr>
+          <tr><td style="padding:0 0 6px 0;font-size:13px;color:#7CFFDC">✓ ${esc(pack.hostingIncluded)}</td></tr>
+          <tr><td style="padding:0 0 6px 0;font-size:13px;color:#7CFFDC">✓ ${esc(pack.supportIncluded)}</td></tr>
+          <tr><td style="padding:6px 0 0 0;font-size:12.5px;color:rgba(255,255,255,.66)">${esc(pack.renewalLabel)} : ${esc(opts.renewalOffer.main)}${esc(pack.renewalSuffix)}</td></tr>
+        </table>
       </td></tr>
     </table>
     <p style="text-align:center;margin:26px 0 10px 0">
       <a href="${esc(opts.previewUrl)}" style="display:inline-block;background:#00E5A0;color:#0B1220;padding:14px 30px;border-radius:40px;text-decoration:none;font-weight:800;font-size:15px">${esc(copy.cta)} →</a>
     </p>
-    <p style="text-align:center;margin:0 0 24px 0;font-size:13px;color:#8a90a0">${esc(pack.directLinkLabel)} <a href="${esc(opts.previewUrl)}" style="color:#00A57E;text-decoration:none">${esc(opts.previewUrl)}</a></p>
+    <p style="text-align:center;margin:0 0 18px 0;font-size:13px;color:#8a90a0">${esc(pack.directLinkLabel)} <a href="${esc(opts.previewUrl)}" style="color:#00A57E;text-decoration:none">${esc(opts.previewUrl)}</a></p>
+    <p style="text-align:center;margin:0 0 24px 0;font-size:14px;font-weight:700;color:#22262e">${esc(pack.ctaLine)}</p>
     <p style="margin:0;font-size:15px;line-height:1.6;color:#22262e">${esc(copy.closing)}</p>
     <p style="margin:22px 0 0 0;font-size:14px;line-height:1.6;color:#22262e">${pack.signature}</p>
   </td></tr>
@@ -271,75 +318,123 @@ function renderEmail(opts: {
 
 /* ─────────── Version texte (accessibilité + délivrabilité) ─────────── */
 
-function renderEmailText(opts: { p: Prospect; copy: SalesCopy; previewUrl: string; price: string; currency: string; lang: Lang }): string {
+function renderEmailText(opts: {
+  p: Prospect;
+  copy: SalesCopy;
+  previewUrl: string;
+  offer: { main: string; approx: string | null };
+  renewalOffer: { main: string; approx: string | null };
+  includedFeatures: string[];
+  lang: Lang;
+}): string {
   const pack = LANG_PACKS[opts.lang];
   const { copy, p } = opts;
   const lines = [
     copy.hook,
     "",
     ...copy.bullets.map((b) => `• ${b}`),
+  ];
+  if (opts.includedFeatures.length) {
+    lines.push("", pack.includedTitle + " :", ...opts.includedFeatures.map((f) => `• ${f}`));
+  }
+  lines.push(
+    "",
+    `${pack.howTitle} :`,
+    ...pack.howSteps.map((s, i) => `${i + 1}. ${s}`),
     "",
     `${pack.offerIntro} ${p.businessName}`,
-    `${opts.price} ${opts.currency} — ${pack.offerAll}`,
+    `${opts.offer.main}${opts.offer.approx ? ` (${opts.offer.approx})` : ""} — ${pack.offerAll}`,
+    `✓ ${pack.domainIncluded}`,
+    `✓ ${pack.hostingIncluded}`,
+    `✓ ${pack.supportIncluded}`,
+    `${pack.renewalLabel} : ${opts.renewalOffer.main}${pack.renewalSuffix}`,
     `${pack.offerDays}. ${opts.previewUrl}`,
     "",
+    pack.ctaLine,
     copy.closing,
     "",
     "GoSite Digital — gosite.digital",
     pack.stopLine,
-  ];
+  );
   return lines.join("\n");
 }
 
 /* ─────────── Envoi ─────────── */
 
+const FX_TTL_MS = 24 * 3600_000;
+
+/** Taux de change réels depuis open.er-api.com (gratuit, sans clé), cachés
+ *  24 h dans les Réglages (FX_RATES). Jamais de throw : sans taux fiables on
+ *  retourne null et l'email part en USD — jamais un montant faux. */
+async function getRates(): Promise<Rates | null> {
+  let stale: Rates | null = null;
+  try {
+    const raw = (await getSetting("FX_RATES")).trim();
+    if (raw) {
+      const parsed = JSON.parse(raw) as { rates?: Rates; fetchedAt?: string };
+      if (parsed.rates) {
+        if (Date.now() - new Date(parsed.fetchedAt ?? 0).getTime() < FX_TTL_MS) return parsed.rates;
+        stale = parsed.rates;
+      }
+    }
+  } catch { /* cache illisible : on tente un fetch neuf */ }
+  try {
+    const res = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(8000) });
+    const json = (await res.json()) as { result?: string; rates?: Rates };
+    if (res.ok && json.result === "success" && json.rates) {
+      await setSetting("FX_RATES", JSON.stringify({ rates: json.rates, fetchedAt: new Date().toISOString() }));
+      return json.rates;
+    }
+  } catch { /* réseau : on retombe sur le cache expiré */ }
+  return stale;
+}
+
+/** Inclusions réelles du site généré, dérivées de la fiche (SiteConfig).
+ *  En cas d'erreur, liste vide : le bloc est omis, l'envoi ne casse jamais. */
+async function includedFeaturesFor(p: Prospect): Promise<string[]> {
+  try {
+    const { buildSiteConfig } = await import("./site-config");
+    const { generateIncludedFeatures } = await import("./bundle");
+    return generateIncludedFeatures(buildSiteConfig((p.clientData ?? {}) as Record<string, string>, p.id));
+  } catch {
+    return [];
+  }
+}
+
 export type SendResult = { ok: boolean; simulated: boolean; messageId?: string; error?: string; subject?: string; bodyHtml?: string; token?: string };
 
-export async function sendSalesEmail(p: Prospect, previewUrl: string, todoList: string[] = []): Promise<SendResult> {
+export async function sendSalesEmail(p: Prospect, previewUrl: string): Promise<SendResult> {
   // Opt-out : aucune copie, aucun appel LLM pour une adresse désinscrite.
   const { isDoNotContact } = await import("./dnc");
   if (await isDoNotContact(p.email)) {
     return { ok: false, simulated: false, error: `do_not_contact : ${p.email} est désinscrit, envoi bloqué` };
   }
-  const price = (await getSetting("OFFER_PRICE")) || "490";
-  const sheet = (p.clientData ?? {}) as Record<string, string>;
-  const sheetCurrency = typeof sheet.CURRENCY === "string" ? sheet.CURRENCY.trim().toUpperCase() : "";
-  // Devise du pays du lead si la fiche ne la précise pas (un lead US ne doit
-  // jamais recevoir « 490 € »).
-  const country = String(p.country ?? "");
-  const geoCurrency = /\b(usa?|us|united states|états-unis|etats-unis|america)\b/i.test(country)
-    ? "USD"
-    : /\b(uk|united kingdom|england|royaume-uni|gb)\b/i.test(country)
-      ? "GBP"
-      : "";
-  const currency = sheetCurrency || geoCurrency || (await getSetting("OFFER_CURRENCY")) || "EUR";
+  const price = parseFloat((await getSetting("OFFER_PRICE")) || "259") || 259;
+  const renewal = parseFloat((await getSetting("RENEWAL_PRICE")) || "45") || 45;
+  // Devise du lead : la fiche (CURRENCY, remplie par le Mapper) gagne, sinon la
+  // géo du pays — conversion au taux réel par fx (jamais le chiffre brut
+  // réutilisé dans une autre devise).
+  const currency = resolveDisplayCurrency(p);
   const lang = resolveLang(p);
 
-  // 🧠 Copy en 2 passes, avec repli complet par langue (jamais de blocage)
-  const ai = await aiSalesCopy(p, price, currency, lang);
-  const copy = coerceCopy(ai, lang, p);
+  // 🧠 Copy en 2 passes avec garde-fous (sanitize) et repli complet par langue
+  const copy = await aiSalesCopy(p, lang);
+
+  // Taux de change réels (cache 24 h) — sans taux fiables, l'email part en USD.
+  const rates = await getRates();
+  const offer = displayOffer(price, currency, rates);
+  const renewalOffer = displayOffer(renewal, currency, rates);
+
+  // Inclusions réelles du site généré (faits du bundle, jamais inventées).
+  const includedFeatures = await includedFeaturesFor(p);
+
   const senderEmail = await getSetting("BREVO_SENDER_EMAIL");
   const agencyAddress = await getSetting("AGENCY_ADDRESS");
   const token = newEmailToken();
   const appBase = await appBaseUrl();
-  const bodyText0 = renderEmailText({ p, copy, previewUrl, price, currency, lang });
-  // v6 : checklist client (données à fournir) dérivée de la config du bundle —
-  // injectée dans l'email de livraison, HTML + texte.
-  let todoHtml = "";
-  let todoText = "";
-  if (todoList.length) {
-    const escH = (t: string): string => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const title = lang === "en" ? "Before you go live — a short checklist" : "Avant la mise en ligne — une courte checklist";
-    todoHtml =
-      `<div style="margin-top:18px;padding:14px 18px;background:#f4f6fa;border-radius:12px">` +
-      `<p style="margin:0 0 8px;font-weight:700;color:#22262e;font-size:14px">${escH(title)}</p>` +
-      `<ul style="margin:0;padding-left:18px;color:#3c4250;font-size:13.5px;line-height:1.6">` +
-      todoList.map((t) => `<li>${escH(t)}</li>`).join("") +
-      `</ul></div>`;
-    todoText = `\n\n${title} :\n${todoList.map((t, i) => `${i + 1}. ${t}`).join("\n")}`;
-  }
-  const bodyHtml = injectPixel(wrapLinks(renderEmail({ p, copy, previewUrl, price, currency, lang, agencyAddress }) + todoHtml, appBase, token), appBase, token);
-  const bodyText = trackifyText(bodyText0 + todoText, appBase, token);
+  const bodyText0 = renderEmailText({ p, copy, previewUrl, offer, renewalOffer, includedFeatures, lang });
+  const bodyHtml = injectPixel(wrapLinks(renderEmail({ p, copy, previewUrl, offer, renewalOffer, includedFeatures, lang, agencyAddress }), appBase, token), appBase, token);
+  const bodyText = trackifyText(bodyText0, appBase, token);
   const content: SendResult = { ok: false, simulated: false, subject: copy.subject, bodyHtml, token };
 
   if (!p.email) return { ...content, ok: false, simulated: false, error: "Email absent" };
