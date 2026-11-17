@@ -216,6 +216,20 @@ CREATE INDEX IF NOT EXISTS idx_lead_notes_prospect ON lead_notes (prospect_id);
 CREATE INDEX IF NOT EXISTS idx_emails_prospect ON emails (prospect_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_message ON emails (message_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_token ON emails (token) WHERE token IS NOT NULL;
+CREATE TABLE IF NOT EXISTS sessions (
+  id serial PRIMARY KEY,
+  token_hash text NOT NULL UNIQUE,
+  ip text,
+  user_agent text,
+  created_at timestamp NOT NULL DEFAULT now(),
+  expires_at timestamp NOT NULL
+);
+CREATE TABLE IF NOT EXISTS login_attempts (
+  ip text PRIMARY KEY,
+  count integer NOT NULL DEFAULT 0,
+  window_start timestamp NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires_at);
 `;
 
 let ready: Promise<void> | null = null;

@@ -7,21 +7,18 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 async function authorized(req: NextRequest): Promise<boolean> {
-  // Trois canaux d'authentification, le secret peut venir de DEUX sources :
-  // 1) Vercel Cron : "Authorization: Bearer $CRON_SECRET" (var d'env Vercel).
-  // 2) Moniteurs externes (cron-job.org, UptimeRobot) : "GET …?key=$CRON_SECRET".
-  // 3) Le secret peut être régénéré dans Réglages (DB) : les deux valeurs sont
-  //    acceptées — sinon la régénération coupe le moniteur externe en 401 et
-  //    le pipeline automatique s'arrête sans warning.
+  // UN seul canal : "Authorization: Bearer $CRON_SECRET". Les query strings
+  // apparaissent dans les logs serveur, analytics, referers et historiques —
+  // l'auth par ?key=… a été supprimée (spec refonte 1.2). Le secret peut venir
+  // de DEUX sources (var d'env Vercel ou Réglages/DB) : les deux sont
+  // acceptées — sinon la régénération coupe le moniteur externe en 401.
   // Pas de raccourci x-vercel-cron : ce header est forgeable.
   const candidates = new Set(
     [process.env.CRON_SECRET, await getSetting("CRON_SECRET")].filter((v): v is string => Boolean(v?.trim())),
   );
   if (candidates.size === 0) return process.env.NODE_ENV !== "production"; // dev local seulement
   const auth = req.headers.get("authorization");
-  if (auth && [...candidates].some((s) => auth === `Bearer ${s}`)) return true;
-  const urlKey = req.nextUrl.searchParams.get("key");
-  return Boolean(urlKey) && candidates.has(urlKey as string);
+  return Boolean(auth) && [...candidates].some((s) => auth === `Bearer ${s}`);
 }
 
 // Le pipeline dure jusqu'à 45 s + un déploiement Cloudflare peut dépasser la

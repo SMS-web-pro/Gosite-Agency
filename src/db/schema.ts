@@ -293,3 +293,29 @@ export const siteLeads = pgTable("site_leads", {
 });
 
 export type SiteLead = typeof siteLeads.$inferSelect;
+
+// ─────────────────────────────────────────────
+// SESSIONS ADMIN — tokens signés (src/lib/auth.ts). On n'y stocke que le
+// HASH du token : un dump de la table ne permet jamais de forger une session.
+// ─────────────────────────────────────────────
+export const sessions = pgTable("sessions", {
+  id: serial("id").primaryKey(),
+  tokenHash: text("token_hash").notNull().unique(),
+  ip: text("ip"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+export type Session = typeof sessions.$inferSelect;
+
+// ─────────────────────────────────────────────
+// LOGIN ATTEMPTS — rate limit connexion : 5 tentatives / 15 min / IP
+// ─────────────────────────────────────────────
+export const loginAttempts = pgTable("login_attempts", {
+  ip: text("ip").primaryKey(),
+  count: integer("count").notNull().default(0),
+  windowStart: timestamp("window_start").notNull(),
+});
+
+export type LoginAttempt = typeof loginAttempts.$inferSelect;

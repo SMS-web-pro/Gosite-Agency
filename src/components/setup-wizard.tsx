@@ -175,7 +175,7 @@ export function SetupWizard({ onChanged }: { onChanged?: () => void }) {
           </button>
         </div>
         <p className="text-[11px] mt-2" style={{ color: "var(--text-faint)" }}>
-          Pour un cron externe (cron-job.org, UptimeRobot…), appelez cette URL avec l'en-tête <code>Authorization: Bearer VOTRE_CRON_SECRET</code> ou en ajoutant <code>?secret=…</code>.
+          Pour un cron externe (cron-job.org, UptimeRobot…), appelez cette URL avec l'en-tête <code>Authorization: Bearer VOTRE_CRON_SECRET</code> (configuré dans les réglages avancés du moniteur). L'auth par paramètre d'URL n'est plus acceptée.
         </p>
       </div>
     </div>
