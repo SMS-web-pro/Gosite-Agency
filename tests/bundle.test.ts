@@ -93,11 +93,42 @@ check("fallback liens légaux réels", idx.includes('href="/privacy"') && idx.in
 check("fallback services cliquables", idx.includes('href="/services/leak-repair"'));
 check("fallback hero overlay image locale", idx.includes("images/hero.jpg"));
 check("fallback topbar une ligne", idx.includes("24/7 Emergency") === config.emergency247 && (config.emergency247 || idx.includes("Mon-Fri 8-6")));
-check("fallback get a free quote", idx.includes("Get a Free Quote") && !idx.includes("Get Directions"));
+check("fallback CTA contact neutre", idx.includes("Get in touch") && !idx.includes("Get Directions"));
 check("fallback JSON-LD LocalBusiness + FAQ", idx.includes("application/ld+json") && idx.includes("FAQPage"));
 
 // rating 0 -> pas de note affichée, la section devient une invitation honnête
 const idx0 = renderFallbackIndex(buildSiteConfig({ ...sheet, GOOGLE_RATING: "0.0", REVIEW_COUNT: "0" }, 1));
 check("fallback rating 0 -> invitation sans note", !idx0.includes("4.8</span>") && !idx0.includes("4.8/5") && !idx0.includes("See reviews on Google") && idx0.includes("Your review matters"));
+
+// ── Voix éditoriale de la niche : un site FR de salle de sport ne doit JAMAIS
+// parler « chantier/permis/devis » — la FAQ, les engagements, le parcours et
+// les légendes de galerie viennent de niches.ts (gym).
+const gymSheet = {
+  ...sheet, BUSINESS_NAME: "SayFit Club", BUSINESS_TYPE: "salle de sport", TAGLINE: "Salle de sport haut de gamme à Marrakech",
+  CITY: "Marrakech", COUNTRY: "Morocco", ZIP: "40000", LANG: "fr", LOCALE: "fr-FR",
+  PHONE: "+212 661 23 45 67", PHONE_LINK: "+212661234567", EMAIL: "none",
+  HOURS_WEEKDAY: "Lun-Sam 7h-22h", SCHEMA_TYPE: "ExerciseGym",
+  PRIMARY_COLOR: "#0A0A0A", ACCENT_COLOR: "#E53935", NEUTRAL_BG: "#F2F2F2",
+  SERVICES: JSON.stringify([
+    { title: "Cours Collectifs", desc: "Des cours variés pour tous les niveaux." },
+    { title: "Fitness", desc: "Des séances adaptées à votre rythme." },
+    { title: "Coaching Personnel", desc: "Un suivi individuel et mesurable." },
+    { title: "Musculation", desc: "Plateaux libres et machines complètes." },
+    { title: "Cardio", desc: "Tapis, rameurs, vélos connectés." },
+  ]),
+  SERVICES_FULL: "",
+};
+const gym = renderFallbackIndex(buildSiteConfig(gymSheet, 2087));
+check("gym: aucune trace de jargon BTP", !/chantier|permis|devis/i.test(gym));
+check("gym: titre réalisations neutre", gym.includes("Réalisations récentes autour de Marrakech"));
+check("gym: engagements de la niche", gym.includes("Coachs diplômés") && gym.includes("Séance découverte"));
+check("gym: parcours de la niche", gym.includes("Bilan de départ") && gym.includes("Bilans réguliers"));
+check("gym: FAQ de la niche", gym.includes("Puis-je essayer avant de m'abonner ?") && gym.includes("mixte et adaptée aux femmes"));
+check("gym: légendes de galerie", gym.includes('class="g-cap"') && gym.includes("Plateau Libre") && gym.includes("Zone Cardio"));
+check("gym: chips hero depuis la niche", gym.includes('class="chip">Formules flexibles<') && !gym.includes("Résidentiel & Commercial"));
+check("gym: marqueurs v6 intacts", ["topbar", "trustbar", "w-card", "p-step", "faq-item", "t-star", "mobile-bar", "data-reveal", "api/site-form/"].every((m) => gym.includes(m)));
+const gymEn = renderFallbackIndex(buildSiteConfig({ ...gymSheet, LANG: "en", LOCALE: "en-US", COUNTRY: "United States", CITY: "Dallas" }, 2087));
+check("gym EN: FAQ de la niche (faqEn)", gymEn.includes("Can I try before I join?"));
+check("gym EN: pas de caption fr", !gymEn.includes('class="g-cap"'));
 
 process.exit(fail ? 1 : 0);

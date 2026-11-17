@@ -21,6 +21,17 @@ export type SiteConfig = {
   nicheLabel: string; schemaType: string;
   primaryColor: string; accentColor: string; neutralBg: string;
   prospectId: number;
+  /** Voix éditoriale de la niche (niches.ts) : engagements, parcours, FAQ,
+   *  légendes de galerie et badges de confiance. Sans elle, le template
+   *  retombe sur un vocabulaire artisan générique — absurde pour un gym. */
+  niche?: {
+    guarantees: { title: string; desc: string }[];
+    process: { title: string; desc: string }[];
+    faq: { q: string; a: string }[];
+    faqEn: { q: string; a: string }[];
+    gallery: { title: string; desc: string; tag: string }[];
+    trustBadges: string[];
+  };
 };
 
 function slugify(s: string): string {
@@ -101,6 +112,8 @@ export function buildSiteConfig(sheet: Record<string, string>, prospectId: numbe
   const ig = str(sheet.INSTAGRAM, 200);
   const fb = str(sheet.FACEBOOK, 200);
   const areas = (str(sheet.AREAS, 300) || str(sheet.CITY, 60)).split(",").map((c) => c.trim()).filter(Boolean);
+  const niche = findNiche(sheet.BUSINESS_TYPE || "");
+  const pickQa = (xs: { q: string; a: string }[]) => xs.map(({ q, a }) => ({ q, a }));
 
   return {
     name: str(sheet.BUSINESS_NAME, 80), tagline: str(sheet.TAGLINE, 120),
@@ -117,9 +130,17 @@ export function buildSiteConfig(sheet: Record<string, string>, prospectId: numbe
     year: new Date().getFullYear(),
     lang: (sheet.LANG || "fr").startsWith("en") ? "en" : "fr",
     locale: str(sheet.LOCALE, 12) || "en-US", dir: (sheet.LANG_DIR || "ltr") === "rtl" ? "rtl" : "ltr",
-    nicheLabel: findNiche(sheet.BUSINESS_TYPE || "").label, schemaType: str(sheet.SCHEMA_TYPE, 40) || "LocalBusiness",
+    nicheLabel: niche.label, schemaType: str(sheet.SCHEMA_TYPE, 40) || "LocalBusiness",
     primaryColor: str(sheet.PRIMARY_COLOR, 20) || "#12294b", accentColor: str(sheet.ACCENT_COLOR, 20) || "#ff7a1a",
     neutralBg: str(sheet.NEUTRAL_BG, 20) || "#f6f8fc",
     prospectId,
+    niche: {
+      guarantees: niche.guarantees.map(({ title, desc }) => ({ title, desc })),
+      process: niche.process.map(({ title, desc }) => ({ title, desc })),
+      faq: pickQa(niche.faq),
+      faqEn: niche.faqEn ? pickQa(niche.faqEn) : [],
+      gallery: niche.gallery.map(({ title, desc, tag }) => ({ title, desc, tag })),
+      trustBadges: [...niche.trustBadges],
+    },
   };
 }
