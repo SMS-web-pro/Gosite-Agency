@@ -85,11 +85,12 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
           max_tokens: 4000,
         }),
       },
-      // Modèle "agent" (omniroute) = raisonnement : jusqu'à ~75 s sur le
-      // contexte RIO (prompt + snapshot). Budget prévu : 3 × 75 s, compatible
-      // maxDuration 300 de la route. Un seul appel, pas de retry (le retry
-      // repartait sur un timeout quasi garanti).
-      { timeoutMs: 75_000, retries: 0, delayMs: 800 }
+      // Modèle "agent" (omniroute) = raisonnement avec blocages ALÉATOIRES :
+      // le même payload répond tantôt en 0,8 s tantôt pend > 110 s. Génération
+      // légitime jusqu'à ~35 s. Stratégie : 50 s + 1 retry qui re-tire le dé
+      // (2 tentatives → probabilité de blocage p²). Pire cas ~101 s/tour,
+      // compatible maxDuration 300.
+      { timeoutMs: 50_000, retries: 1, delayMs: 800 }
     );
     if (!res.ok) {
       return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };
