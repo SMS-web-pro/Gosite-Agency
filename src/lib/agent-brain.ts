@@ -211,8 +211,9 @@ FORMAT DE SORTIE IMPÉRATIF :
         }),
       },
       // Modèle "agent" (omniroute) = raisonnement : les tâches lourdes
-      // (qualification, offre, auto-évolution) génèrent en 25-35 s. Le vieux
-      // 18 s + 1 retry = abort systématique à 36,8 s. Un seul appel, 45 s.
+      // génèrent en 25-45 s (variance élevée : 2 s à > 45 s sur le même
+      // serveur). Le tick meurt à 60 s : au-delà de 45 s, échec propre et
+      // retry au prochain tick plutôt que fonction tuée en pleine écriture.
       { timeoutMs: 45_000, retries: 0, delayMs: 800 }
     );
     if (!res.ok) {

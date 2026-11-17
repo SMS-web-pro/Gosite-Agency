@@ -85,10 +85,11 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
           max_tokens: 4000,
         }),
       },
-      // Modèle "agent" (omniroute) = raisonnement : jusqu'à ~35 s sur les
-      // échanges à outils. Un seul appel de 45 s plutôt qu'un retry qui
-      // repartait sur un timeout quasi garanti.
-      { timeoutMs: 45_000, retries: 0, delayMs: 800 }
+      // Modèle "agent" (omniroute) = raisonnement : jusqu'à ~75 s sur le
+      // contexte RIO (prompt + snapshot). Budget prévu : 3 × 75 s, compatible
+      // maxDuration 300 de la route. Un seul appel, pas de retry (le retry
+      // repartait sur un timeout quasi garanti).
+      { timeoutMs: 75_000, retries: 0, delayMs: 800 }
     );
     if (!res.ok) {
       return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };
@@ -225,7 +226,7 @@ export async function askRio(userText: string, channel: "web" | "telegram" = "we
   const history = await loadHistory(channel, 12);
   const messages: ChatMsg[] = [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "system", content: `Contexte temps réel (${new Date().toLocaleString("fr-FR")}) : ${snapshot.summary} — détail: ${JSON.stringify(snapshot.data)}` },
+    { role: "system", content: `Contexte temps réel (${new Date().toLocaleString("fr-FR")}) : ${snapshot.summary} — détail: ${JSON.stringify(snapshot.data).slice(0, 3500)}` },
     ...history.slice(0, -1).map((h) => ({ role: (h.role === "tool" ? "assistant" : h.role) as "user" | "assistant", content: h.content })),
     { role: "user", content: userText },
   ];
