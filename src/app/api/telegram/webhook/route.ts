@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest, after } from "next/server";
 import { handleTelegramUpdate } from "@/lib/telegram";
 import { getSetting } from "@/lib/settings";
-import { ensureSchema } from "@/db/bootstrap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,9 +8,7 @@ export const dynamic = "force-dynamic";
 // reçoit le 200 immédiatement, le travail continue dans after().
 export const maxDuration = 60;
 
-export async function POST(req: NextRequest) {
-  await ensureSchema();
-  // Secret obligatoire (configuré par setWebhook) — sans lui, n'importe qui
+export async function POST(req: NextRequest) {  // Secret obligatoire (configuré par setWebhook) — sans lui, n'importe qui
   // peut injecter de faux updates Telegram.
   const secret = await getSetting("TELEGRAM_WEBHOOK_SECRET");
   const header = req.headers.get("x-telegram-bot-api-secret-token");

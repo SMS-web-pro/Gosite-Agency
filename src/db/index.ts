@@ -32,10 +32,14 @@ if (databaseUrl) {
     new Pool({
       connectionString: databaseUrl,
       ssl: needsSsl(databaseUrl) ? { rejectUnauthorized: false } : undefined,
-      max: 5, // serverless-friendly
-      idleTimeoutMillis: 20_000,
+      // Serverless : chaque instance lambda est un pool indépendant. max 5
+      // multipliait les connexions par le nombre de cold starts → saturation
+      // du pooler Supabase (timeouts). 1-2 connexions par instance suffit.
+      max: 2,
+      idleTimeoutMillis: 10_000,
       connectionTimeoutMillis: 10_000,
       keepAlive: true,
+      application_name: "gosite-agency",
     });
   globalForDb.__gositePgPool = pool;
   db = drizzleNodePg(pool, { schema });
@@ -66,4 +70,28 @@ export { db };
 
 export function execDdl(sql: string): Promise<void> {
   return runDdl(sql);
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Retry à backoff exponentiel (3 tentatives, 500 ms → 1 s → 2 s) pour les
+ * opérations DB fragiles aux cold starts (ECONNRESET / timeout du pooler).
+ * Usage : avecDbRetry(() => db.select()...) — à employer sur les chemins
+ * critiques du pipeline (tick, cron).
+ */
+export async function withDbRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 500): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      const transient = /ECONNRESET|ETIMEDOUT|ECONNREFUSED|timeout|connection terminated|too many connections/i.test(msg);
+      if (!transient || i === retries - 1) throw err;
+      await sleep(delayMs * 2 ** i);
+    }
+  }
+  throw lastErr;
 }

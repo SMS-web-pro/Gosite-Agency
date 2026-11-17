@@ -1,16 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SETTING_KEYS, getAllSettings, setSetting, type SettingKey } from "@/lib/settings";
 import { logActivity } from "@/lib/activity";
-import { ensureSchema } from "@/db/bootstrap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const SECRET_HINT = (v: string) => (v.length <= 6 ? "••••••" : `${v.slice(0, 4)}••••••${v.slice(-4)}`);
 
-export async function GET() {
-  await ensureSchema();
-  const all = await getAllSettings();
+export async function GET() {  const all = await getAllSettings();
   // Ne jamais exposer les secrets internes
   delete all.TELEGRAM_WEBHOOK_SECRET;
   delete all.CRON_SECRET;
@@ -24,9 +21,7 @@ export async function GET() {
   return NextResponse.json({ settings: masked });
 }
 
-export async function POST(req: NextRequest) {
-  await ensureSchema();
-  const body = (await req.json().catch(() => ({}))) as Record<string, string>;
+export async function POST(req: NextRequest) {  const body = (await req.json().catch(() => ({}))) as Record<string, string>;
   const updated: string[] = [];
   for (const [key, value] of Object.entries(body)) {
     if (!(key in SETTING_KEYS)) continue;

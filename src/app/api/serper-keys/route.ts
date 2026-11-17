@@ -3,13 +3,11 @@ import { db } from "@/db";
 import { serperKeys } from "@/db/schema";
 import { asc, eq } from "drizzle-orm";
 import { logActivity } from "@/lib/activity";
-import { ensureSchema } from "@/db/bootstrap";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  await ensureSchema();
   const rows = await db.select().from(serperKeys).orderBy(asc(serperKeys.createdAt));
   // Ne jamais renvoyer les clés en clair — l'UI n'affiche que label/crédits/statut.
   return NextResponse.json({

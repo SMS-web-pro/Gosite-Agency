@@ -5,8 +5,8 @@
 // uniquement, zéro import node.
 //
 // Table `sessions` (src/db/schema.ts) : piste d'audit (hash du token, IP, UA)
-// écrite à la connexion. Le fichier bootstrap.ts crée la table en prod jusqu'à
-// la migration drizzle complète.
+// écrite à la connexion. La table est créée par les migrations drizzle
+// (npm run db:migrate).
 
 const SESSION_COOKIE = "gsd_admin";
 const SESSION_VERSION = "v1";

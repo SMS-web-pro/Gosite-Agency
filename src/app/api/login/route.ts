@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { db } from "@/db";
 import { loginAttempts, sessions } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { ensureSchema } from "@/db/bootstrap";
 import { logActivity } from "@/lib/activity";
 import {
   SESSION_COOKIE,
@@ -31,7 +30,6 @@ export async function POST(req: NextRequest) {
   // instances serverless (un compteur en mémoire serait par-processus).
   const ip = clientIp(req);
   try {
-    await ensureSchema();
     const row = (await db.select().from(loginAttempts).where(eq(loginAttempts.ip, ip)).limit(1))[0];
     const decision = loginDecision(
       row?.count ?? 0,

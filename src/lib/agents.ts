@@ -123,8 +123,6 @@ export async function ensureAgentsSeeded() {
 }
 
 async function seedAgents() {
-  const { ensureSchema } = await import("@/db/bootstrap");
-  await ensureSchema();
   const keys = AGENT_DEFINITIONS.map((d) => d.key);
   const existing = await db.select({ key: agents.key }).from(agents).where(inArray(agents.key, keys));
   const have = new Set(existing.map((r) => r.key));
