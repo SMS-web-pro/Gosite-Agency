@@ -7,7 +7,11 @@ import { ensureAgentsSeeded } from "@/lib/agents";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// La boucle RIO (askRio) fait jusqu'à 4 appels LLM de ~45 s (modèle de
+// raisonnement omniroute) : 60 s tuait systématiquement la fonction dès qu'un
+// outil était appelé → « Connexion interrompue ». Budget prévu par rio.ts :
+// 3 × 75 s + outils → aligne sur 300 (plan Pro).
+export const maxDuration = 300;
 
 export async function GET() {
   await ensureAgentsSeeded();
