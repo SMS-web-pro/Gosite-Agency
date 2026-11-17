@@ -210,7 +210,10 @@ FORMAT DE SORTIE IMPÉRATIF :
           // (dont omniroute) corrompent la sortie avec ce paramètre.
         }),
       },
-      { timeoutMs: 18_000, retries: 1, delayMs: 800 }
+      // Modèle "agent" (omniroute) = raisonnement : les tâches lourdes
+      // (qualification, offre, auto-évolution) génèrent en 25-35 s. Le vieux
+      // 18 s + 1 retry = abort systématique à 36,8 s. Un seul appel, 45 s.
+      { timeoutMs: 45_000, retries: 0, delayMs: 800 }
     );
     if (!res.ok) {
       await trackCall(params.agent, params.task, false, Date.now() - t0, 0);

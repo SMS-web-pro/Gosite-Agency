@@ -85,7 +85,10 @@ async function callLlm(messages: ChatMsg[], withTools: boolean): Promise<{
           max_tokens: 4000,
         }),
       },
-      { timeoutMs: 25_000, retries: 1, delayMs: 800 }
+      // Modèle "agent" (omniroute) = raisonnement : jusqu'à ~35 s sur les
+      // échanges à outils. Un seul appel de 45 s plutôt qu'un retry qui
+      // repartait sur un timeout quasi garanti.
+      { timeoutMs: 45_000, retries: 0, delayMs: 800 }
     );
     if (!res.ok) {
       return { content: null, toolCalls: [], error: llmErrorDetail(res.status, await res.text().catch(() => "")) };
