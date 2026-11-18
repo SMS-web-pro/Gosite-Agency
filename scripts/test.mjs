@@ -59,8 +59,10 @@ for (const f of LIB_FILES) {
   writeFileSync(`${LIB_DIR}/${f}`, src);
 }
 
-// site-engine (refonte 2.1/2.2) : copie à plat + réécriture des imports vers
-// les stubs (gemini) et le parseLooseJson neutralisé (agent-brain sans DB).
+// site-engine (refonte 2.1/2.2/2.3) : copie à plat + réécriture des imports
+// vers les stubs (gemini) et le parseLooseJson neutralisé (agent-brain sans DB).
+// Tous les modules du moteur sont aplatis dans tests/_lib : les imports relatifs
+// (types, utils, composants, css) sont ramenés au basename + extension .ts.
 {
   // agent-brain.ts copié sans ses imports DB/réseau : parseLooseJson est pur.
   const brain = readFileSync("src/lib/agent-brain.ts", "utf8")
@@ -75,15 +77,47 @@ for (const f of LIB_FILES) {
 
   const files = [
     ["site-spec.schema.ts", "site-spec.schema.ts"],
+    ["types.ts", "types.ts"],
     ["generate-spec.ts", "generate-spec.ts"],
     ["css/generate-theme.ts", "generate-theme.ts"],
+    ["css/base.ts", "base.ts"],
+    ["css/components.ts", "site-components.ts"],
+    ["utils/escape.ts", "escape.ts"],
+    ["utils/labels.ts", "labels.ts"],
+    ["components/common/ui.ts", "ui.ts"],
+    ["components/common/header.ts", "header.ts"],
+    ["components/common/footer.ts", "footer.ts"],
+    ["components/common/mobile-bar.ts", "mobile-bar.ts"],
+    ["components/common/seo-head.ts", "seo-head.ts"],
+    ["components/hero/hero-split.ts", "hero-split.ts"],
+    ["components/hero/hero-centered.ts", "hero-centered.ts"],
+    ["components/hero/hero-fullwidth.ts", "hero-fullwidth.ts"],
+    ["components/hero/hero-minimal.ts", "hero-minimal.ts"],
+    ["components/services/services-grid3.ts", "services-grid3.ts"],
+    ["components/services/services-grid2.ts", "services-grid2.ts"],
+    ["components/services/services-list.ts", "services-list.ts"],
+    ["components/services/services-cards-h.ts", "services-cards-h.ts"],
+    ["components/process/process-timeline.ts", "process-timeline.ts"],
+    ["components/process/process-numbered.ts", "process-numbered.ts"],
+    ["components/process/process-icons.ts", "process-icons.ts"],
+    ["components/about/about-highlights.ts", "about-highlights.ts"],
+    ["components/faq/faq-accordion.ts", "faq-accordion.ts"],
+    ["components/testimonials/testimonials-cards.ts", "testimonials-cards.ts"],
+    ["components/gallery/gallery-masonry.ts", "gallery-masonry.ts"],
+    ["components/gallery/gallery-grid.ts", "gallery-grid.ts"],
+    ["components/contact/contact-form-map.ts", "contact-form-map.ts"],
+    ["components/trust/trust-bar.ts", "trust-bar.ts"],
+    ["components/registry.ts", "registry.ts"],
   ];
   for (const [from, to] of files) {
     let src = readFileSync(`src/site-engine/${from}`, "utf8");
     src = src
       .replace(/from "\.\.\/lib\/agent-brain"/g, 'from "./agent-brain.ts"')
       .replace(/from "\.\.\/lib\/gemini"/g, 'from "./gemini-spec-stub.ts"')
-      .replace(/from "(\.\/[a-z0-9.-]+)"/g, (_m, p) => (p.endsWith(".ts") ? _m : `from "${p}.ts"`));
+      .replace(/from "((?:\.\.?\/)+)([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)"/g, (_m, _up, p) => {
+        const base = p.split("/").pop() ?? p;
+        return `from "./${base.endsWith(".ts") ? base : `${base}.ts`}"`;
+      });
     writeFileSync(`${LIB_DIR}/${to}`, src);
   }
 }

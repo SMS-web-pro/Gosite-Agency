@@ -95,7 +95,7 @@ const SectionTrust = z.object({
   })).min(3).max(5),
 });
 
-const HomeSection = z.discriminatedUnion("type", [
+const HomeSectionSchema = z.discriminatedUnion("type", [
   SectionHero,
   SectionServices,
   SectionProcess,
@@ -109,7 +109,7 @@ const HomeSection = z.discriminatedUnion("type", [
 
 // === Pages services détail ===
 
-const ServicePage = z.object({
+const ServicePageSchema = z.object({
   slug: z.string().regex(/^[a-z0-9-]+$/),
   title: z.string().max(60),
   metaDescription: z.string().max(160),
@@ -125,7 +125,7 @@ const ServicePage = z.object({
 
 // === Page À Propos (dédiée) ===
 
-const AboutPage = z.object({
+const AboutPageSchema = z.object({
   metaTitle: z.string().max(60),
   metaDescription: z.string().max(160),
   story: z.array(z.string().max(400)).min(2).max(6),
@@ -139,7 +139,7 @@ const AboutPage = z.object({
 
 // === Pages légales ===
 
-const LegalPage = z.object({
+const LegalPageSchema = z.object({
   title: z.string().max(60),
   lastUpdated: z.string(),
   sections: z.array(z.object({
@@ -185,13 +185,13 @@ export const SiteSpecSchema = z.object({
   borderRadius: z.enum(["sharp", "soft", "rounded", "pill"]),
 
   // Contenu page d'accueil
-  homeSections: z.array(HomeSection).min(5).max(10),
+  homeSections: z.array(HomeSectionSchema).min(5).max(10),
 
   // Pages
-  servicePages: z.array(ServicePage).min(3).max(12),
-  aboutPage: AboutPage,
-  privacyPage: LegalPage,
-  termsPage: LegalPage,
+  servicePages: z.array(ServicePageSchema).min(3).max(12),
+  aboutPage: AboutPageSchema,
+  privacyPage: LegalPageSchema,
+  termsPage: LegalPageSchema,
 
   // SEO global
   metaTitle: z.string().max(60),
@@ -200,4 +200,7 @@ export const SiteSpecSchema = z.object({
 });
 
 export type SiteSpec = z.infer<typeof SiteSpecSchema>;
-export type { HomeSection, ServicePage, AboutPage, LegalPage };
+export type HomeSection = z.infer<typeof HomeSectionSchema>;
+export type ServicePage = z.infer<typeof ServicePageSchema>;
+export type AboutPage = z.infer<typeof AboutPageSchema>;
+export type LegalPage = z.infer<typeof LegalPageSchema>;
