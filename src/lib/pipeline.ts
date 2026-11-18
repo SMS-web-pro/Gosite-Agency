@@ -437,18 +437,34 @@ export async function mapProspect(p: Prospect) {
 }
 
 // ─────────────────────────── 5. CODER ───────────────────────────
-// v6 : slug d'abord (domain connu pour la config), puis bundle multi-pages
-// (index Gemini, pages auxiliaires déterministes, images locales).
+// v7 (spec 2.7) : moteur SiteSpec en priorité — la fiche nourrit un SiteSpec
+// validé par Zod, le rendu HTML est 100% déterministe. Repli moteur v6
+// (Gemini → gabarit) si le LLM du spec échoue, pour ne jamais bloquer un lead.
 export async function buildProspectSite(p: Prospect) {
   await markAgentRunStart("coder");
   const sheet = p.clientData ?? buildClientSheet(p);
   const slug = await decideSlug(p);
-  const result = await buildSiteBundle({ ...sheet, SLUG: slug }, p.id);
-  await updateWithSlug(p.id, slug, { siteHtml: result.html, siteBundle: result.bundle, stage: "site_built" });
+  let result: { html: string; bundle: Record<string, string>; engine: "site-engine" | "gemini" | "fallback"; todoList: string[] };
+  let spec: import("../site-engine/site-spec.schema").SiteSpec | null = null;
+  try {
+    const { buildSiteV7 } = await import("./coder-engine");
+    const v7 = await buildSiteV7(sheet, p.id, { slug });
+    spec = v7.spec;
+    result = { html: v7.html, bundle: v7.bundle, engine: v7.engine, todoList: [] };
+  } catch (err) {
+    await logActivity({
+      agentKey: "coder", action: "moteur_v7_repli",
+      message: `Moteur SiteSpec indisponible pour ${p.businessName} (${err instanceof Error ? err.message : err}) — repli moteur v6.`,
+      level: "warn", prospectId: p.id,
+    });
+    result = await buildSiteBundle({ ...sheet, SLUG: slug }, p.id);
+  }
+  await updateWithSlug(p.id, slug, { siteHtml: result.html, siteBundle: result.bundle, siteSpec: spec, stage: "site_built" });
   await markAgentRunEnd("coder", true);
+  const engineLabel = result.engine === "site-engine" ? "moteur SiteSpec" : result.engine === "gemini" ? "Gemini" : "fallback déterministe";
   await logActivity({
     agentKey: "coder", action: "site_genere",
-    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko, ${Object.keys(result.bundle).length} fichiers) — moteur ${result.engine === "gemini" ? "Gemini" : "fallback déterministe"}.`,
+    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko, ${Object.keys(result.bundle).length} fichiers) — ${engineLabel}.`,
     level: "success", prospectId: p.id, meta: { engine: result.engine, size: result.html.length, bundleFiles: Object.keys(result.bundle).length },
   });
   return { html: result.html, bundle: result.bundle, engine: result.engine, todoList: result.todoList, slug };
@@ -745,6 +761,12 @@ async function reRenderBundleForDomain(
   oldBase: string,
   newBase: string
 ): Promise<Record<string, string>> {
+  // v7 : le SiteSpec stocké re-rend TOUT le bundle sur le nouveau domaine
+  // (aucun patch texte — les pages auxiliaires v6 écraseraient le moteur).
+  if (p.siteSpec) {
+    const { renderEngineBundle } = await import("./coder-engine");
+    return renderEngineBundle(p.siteSpec, p.clientData ?? {}, p.id, slug, newBase, p.siteBundle);
+  }
   const { buildSiteConfig } = await import("./site-config");
   const { renderAuxPages, patchIndexDomain } = await import("./bundle");
   const config = buildSiteConfig({ ...(p.clientData ?? {}), DOMAIN: newBase, SLUG: slug }, p.id);

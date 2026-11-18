@@ -8,6 +8,7 @@ import {
   jsonb,
   timestamp,
 } from "drizzle-orm/pg-core";
+import type { SiteSpec } from "../site-engine/site-spec.schema";
 
 // ─────────────────────────────────────────────
 // AGENTS — the AI crew (Prospector, Validator, Emailor, Mapper,
@@ -66,6 +67,7 @@ export const prospects = pgTable("prospects", {
   clientData: jsonb("client_data").$type<Record<string, string>>(), // Mapper sheet
   siteHtml: text("site_html"),
   siteBundle: jsonb("site_bundle").$type<Record<string, string>>(), // v6: bundle multi-pages (fichiers → base64/texte)
+  siteSpec: jsonb("site_spec").$type<SiteSpec>(), // v7: SiteSpec validé — source du re-rendu déterministe
   siteSlug: text("site_slug"),
   deployedUrl: text("deployed_url"),
   deployStatus: text("deploy_status").notNull().default("none"), // none | live | simulated | error

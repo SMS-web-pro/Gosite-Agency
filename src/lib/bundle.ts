@@ -264,8 +264,12 @@ export function patchIndexDomain(html: string, fromBase: string, toBase: string)
  *  bundles sauvés en DB partaient en prod tels quels — le deployer doit
  *  régénérer avant tout déploiement. TOUS les marqueurs sont requis. */
 const V6_MARKERS = ["topbar", "trustbar", "w-card", "p-step", "faq-item", "t-star", "mobile-bar", "data-reveal", "api/site-form/"];
+// v7 (moteur SiteSpec) : marqueur <meta name="generator"> commun à toutes les
+// pages — sans lui, les bundles v7 (sans t-star/topbar) seraient rejoués en
+// boucle rebuild → deploy → rebuild.
+const V7_MARKER = 'name="generator" content="gosite-site-engine/v7"';
 export function isStaleSiteBundle(bundle: Record<string, string> | null | undefined, html: string | null | undefined): boolean {
-  const conform = (s: string) => V6_MARKERS.every((m) => s.includes(m));
+  const conform = (s: string) => s.includes(V7_MARKER) || V6_MARKERS.every((m) => s.includes(m));
   if (bundle && Object.keys(bundle).length > 0) {
     const idx = bundle["/index.html"] ?? bundle["index.html"] ?? "";
     if (idx) return !conform(idx);

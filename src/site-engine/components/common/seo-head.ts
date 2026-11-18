@@ -34,6 +34,9 @@ export function renderHead(opts: HeadOpts): string {
 
   return `<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Marqueur moteur v7 : isStaleSiteBundle s'en sert pour ne PAS rejouer un
+     bundle SiteSpec en boucle de rebuild (les marqueurs v6 n'y sont pas). -->
+<meta name="generator" content="gosite-site-engine/v7">
 <meta name="theme-color" content="${escapeHtml(spec.palette.primary)}">
 <title>${escapeHtml(opts.title)}</title>
 <meta name="description" content="${escapeHtml(opts.description)}">
