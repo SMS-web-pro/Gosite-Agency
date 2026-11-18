@@ -73,14 +73,18 @@ for (const f of LIB_FILES) {
     `export async function geminiCompleteStep(_opts: unknown): Promise<string | null> { return null; }\n`,
   );
 
-  const files = ["site-spec.schema.ts", "generate-spec.ts"];
-  for (const f of files) {
-    let src = readFileSync(`src/site-engine/${f}`, "utf8");
+  const files = [
+    ["site-spec.schema.ts", "site-spec.schema.ts"],
+    ["generate-spec.ts", "generate-spec.ts"],
+    ["css/generate-theme.ts", "generate-theme.ts"],
+  ];
+  for (const [from, to] of files) {
+    let src = readFileSync(`src/site-engine/${from}`, "utf8");
     src = src
       .replace(/from "\.\.\/lib\/agent-brain"/g, 'from "./agent-brain.ts"')
       .replace(/from "\.\.\/lib\/gemini"/g, 'from "./gemini-spec-stub.ts"')
       .replace(/from "(\.\/[a-z0-9.-]+)"/g, (_m, p) => (p.endsWith(".ts") ? _m : `from "${p}.ts"`));
-    writeFileSync(`${LIB_DIR}/${f}`, src);
+    writeFileSync(`${LIB_DIR}/${to}`, src);
   }
 }
 
