@@ -42,12 +42,14 @@ async function callModel(
   model: string,
   system: string,
   user: string,
-  opts: { maxOutputTokens: number; temperature: number; timeoutMs: number; bare?: boolean },
+  opts: { maxOutputTokens: number; temperature: number; timeoutMs: number; bare?: boolean; json?: boolean },
 ): Promise<Hit | Miss> {
   const gen: Record<string, unknown> = {
     temperature: opts.temperature,
     maxOutputTokens: opts.maxOutputTokens,
   };
+  // Mode JSON natif Gemini : garantit une sortie JSON parsable (SiteSpec).
+  if (opts.json) gen.responseMimeType = "application/json";
   // Les modèles «lite» n'ont pas de pensée : on n'envoie pas thinkingConfig
   // (il serait recalé en 400 et déclencherait un second appel pour rien).
   if (!opts.bare && !model.includes("lite")) gen.thinkingConfig = { thinkingLevel: "low" };
@@ -126,6 +128,8 @@ export async function geminiCompleteStep(params: {
    *  s'arrête (retour null) au lieu de lancer un énième essai qui ne pourra
    *  pas finir dans le budget du caller (route 300 s, tick, etc.). */
   deadlineMs?: number;
+  /** responseMimeType: "application/json" (sortie JSON garantie). */
+  jsonMode?: boolean;
 }): Promise<string | null> {
   const keys = await geminiKeys();
   if (keys.length === 0) return null;
@@ -143,6 +147,7 @@ export async function geminiCompleteStep(params: {
         maxOutputTokens: params.maxTokens ?? 16384,
         temperature: params.temperature ?? 0.6,
         timeoutMs: params.timeoutMs ?? CALL_TIMEOUT_MS,
+        json: params.jsonMode,
       });
       if ("text" in r) return r.text;
 

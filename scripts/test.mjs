@@ -59,6 +59,31 @@ for (const f of LIB_FILES) {
   writeFileSync(`${LIB_DIR}/${f}`, src);
 }
 
+// site-engine (refonte 2.1/2.2) : copie à plat + réécriture des imports vers
+// les stubs (gemini) et le parseLooseJson neutralisé (agent-brain sans DB).
+{
+  // agent-brain.ts copié sans ses imports DB/réseau : parseLooseJson est pur.
+  const brain = readFileSync("src/lib/agent-brain.ts", "utf8")
+    .split("\n")
+    .filter((l) => !l.startsWith("import "))
+    .join("\n");
+  writeFileSync(`${LIB_DIR}/agent-brain.ts`, brain);
+  writeFileSync(
+    `${LIB_DIR}/gemini-spec-stub.ts`,
+    `export async function geminiCompleteStep(_opts: unknown): Promise<string | null> { return null; }\n`,
+  );
+
+  const files = ["site-spec.schema.ts", "generate-spec.ts"];
+  for (const f of files) {
+    let src = readFileSync(`src/site-engine/${f}`, "utf8");
+    src = src
+      .replace(/from "\.\.\/lib\/agent-brain"/g, 'from "./agent-brain.ts"')
+      .replace(/from "\.\.\/lib\/gemini"/g, 'from "./gemini-spec-stub.ts"')
+      .replace(/from "(\.\/[a-z0-9.-]+)"/g, (_m, p) => (p.endsWith(".ts") ? _m : `from "${p}.ts"`));
+    writeFileSync(`${LIB_DIR}/${f}`, src);
+  }
+}
+
 const tests = globSync("tests/*.test.ts");
 let failures = 0;
 for (const t of tests) {
