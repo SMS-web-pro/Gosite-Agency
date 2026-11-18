@@ -22,7 +22,7 @@ import { contactFormMap } from "./_lib/contact-form-map.ts";
 import { trustBar } from "./_lib/trust-bar.ts";
 import { COMPONENT_REGISTRY } from "./_lib/registry.ts";
 import { BASE_CSS } from "./_lib/base.ts";
-import { COMPONENTS_CSS } from "./_lib/site-components.ts";
+import { COMPONENTS_CSS } from "./_lib/components.ts";
 import { specFixture, specSheet } from "./spec-fixture.ts";
 
 let fail = 0;

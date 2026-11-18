@@ -28,6 +28,16 @@ export type UiLabels = {
   skip: string;
   legalNav: string;
   contactTitle: string;
+  breadcrumb: string;
+  relatedTitle: string;
+  ctaTitle: string;
+  ctaText: string;
+  backHome: string;
+  notFoundTitle: string;
+  notFoundText: string;
+  missionTitle: string;
+  valuesTitle: string;
+  legalUpdated: string;
 };
 
 const FR: UiLabels = {
@@ -56,6 +66,16 @@ const FR: UiLabels = {
   skip: "Aller au contenu",
   legalNav: "Informations légales",
   contactTitle: "Contact",
+  breadcrumb: "Fil d'Ariane",
+  relatedTitle: "Services liés",
+  ctaTitle: "Besoin de ce service ?",
+  ctaText: "Appelez-nous ou demandez un devis gratuit.",
+  backHome: "Retour à l'accueil",
+  notFoundTitle: "Page introuvable",
+  notFoundText: "La page demandée n'existe pas ou a été déplacée.",
+  missionTitle: "Notre mission",
+  valuesTitle: "Nos valeurs",
+  legalUpdated: "Dernière mise à jour",
 };
 
 const EN: UiLabels = {
@@ -84,6 +104,16 @@ const EN: UiLabels = {
   skip: "Skip to content",
   legalNav: "Legal",
   contactTitle: "Contact",
+  breadcrumb: "Breadcrumb",
+  relatedTitle: "Related services",
+  ctaTitle: "Need this service?",
+  ctaText: "Call us or request a free quote.",
+  backHome: "Back to home",
+  notFoundTitle: "Page not found",
+  notFoundText: "The requested page does not exist or has moved.",
+  missionTitle: "Our mission",
+  valuesTitle: "Our values",
+  legalUpdated: "Last updated",
 };
 
 export function labels(lang: string | undefined): UiLabels {
