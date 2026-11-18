@@ -30,9 +30,9 @@ const slugs = specFixture.servicePages.map((s) => s.slug);
 
 // ── Bundle : structure ──────────────────────────────────────────────────────
 {
-  const expected = ["index.html", "about.html", "privacy.html", "terms.html", "404.html", "sitemap.xml", "robots.txt", "site.webmanifest", "vercel.json", ...slugs.map((s) => `services/${s}.html`)];
+  const expected = ["index.html", "about.html", "privacy.html", "terms.html", "404.html", "sitemap.xml", "robots.txt", "site.webmanifest", "vercel.json", "favicon.svg", "og-image.svg", ...slugs.map((s) => `services/${s}.html`)];
   check("bundle: toutes les clés", expected.every((k) => typeof bundle[k] === "string" && bundle[k].length > 0));
-  check("bundle: 12 fichiers", Object.keys(bundle).length === 12);
+  check("bundle: 14 fichiers", Object.keys(bundle).length === 14);
   check("bundle: aucun undefined", Object.values(bundle).every((v) => !v.includes("undefined")));
 }
 
@@ -122,7 +122,7 @@ const slugs = specFixture.servicePages.map((s) => s.slug);
   const page = evilBundle["index.html"] ?? "";
   check("injection: metaTitle échappé", !page.includes("<script>alert(1)") && page.includes("&lt;script&gt;alert(1)"));
   check("injection: marque échappée", !page.includes("<b>Evil</b>") && page.includes("&lt;b&gt;Evil&lt;/b&gt;"));
-  check("injection: toutes pages rendues", Object.keys(evilBundle).length === 12);
+  check("injection: toutes pages rendues", Object.keys(evilBundle).length === 14);
 }
 
 process.exit(fail ? 1 : 0);

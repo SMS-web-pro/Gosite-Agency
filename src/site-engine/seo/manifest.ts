@@ -15,6 +15,7 @@ export function generateManifest(sheet: ClientSheet, spec: SiteSpec): string {
       display: "standalone",
       background_color: spec.palette.neutralBg,
       theme_color: spec.palette.primary,
+      icons: [{ src: "favicon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" }],
     },
     null,
     2,

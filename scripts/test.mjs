@@ -120,6 +120,9 @@ for (const f of LIB_FILES) {
     ["seo/sitemap.ts", "sitemap.ts"],
     ["seo/robots.ts", "robots.ts"],
     ["seo/manifest.ts", "manifest.ts"],
+    ["images/stock-resolver.ts", "stock-resolver.ts"],
+    ["images/favicon-gen.ts", "favicon-gen.ts"],
+    ["images/og-image-gen.ts", "og-image-gen.ts"],
     ["scripts/reveal.ts", "reveal.ts"],
     ["render.ts", "render.ts"],
   ];

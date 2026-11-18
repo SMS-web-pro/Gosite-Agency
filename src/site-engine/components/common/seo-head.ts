@@ -20,7 +20,11 @@ export function renderHead(opts: HeadOpts): string {
   const { sheet, spec } = opts;
   const url = opts.url.replace(/\/+$/, "");
   const canonical = url.endsWith(".html") || url.endsWith("/") ? url : `${url}/`;
-  const ogImage = /^https?:\/\//.test(sheet.HERO_IMAGE_URL ?? "") ? sheet.HERO_IMAGE_URL : "";
+  const ogImage = /^https?:\/\//.test(sheet.OG_IMAGE_URL ?? "")
+    ? sheet.OG_IMAGE_URL
+    : /^https?:\/\//.test(sheet.HERO_IMAGE_URL ?? "")
+      ? sheet.HERO_IMAGE_URL
+      : "";
 
   const fonts = fontHrefs(spec.fontPairing)
     .map((h) => `<link rel="stylesheet" href="${escapeHtml(h)}">`)

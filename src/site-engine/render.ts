@@ -12,6 +12,8 @@ import { render404Page } from "./pages/not-found";
 import { generateSitemap } from "./seo/sitemap";
 import { generateRobots } from "./seo/robots";
 import { generateManifest } from "./seo/manifest";
+import { generateFavicon } from "./images/favicon-gen";
+import { generateOgImage } from "./images/og-image-gen";
 
 /** Base URL du site : domaine custom > URL déployée > sous-domaine slug. */
 export function resolveBaseUrl(sheet: ClientSheet): string {
@@ -25,8 +27,7 @@ export function resolveBaseUrl(sheet: ClientSheet): string {
 
 /**
  * Point d'entrée du moteur : SiteSpec + fiche → bundle statique complet
- * (html/css/xml/txt/webmanifest/vercel.json). Les assets images/favicon
- * sont ajoutés à ce bundle en Phase 7 (spec 2.6).
+ * (html/css/xml/txt/webmanifest/svg/vercel.json). Zéro LLM au rendu.
  */
 export function renderFullSite(spec: SiteSpec, sheet: ClientSheet): SiteBundle {
   const baseUrl = resolveBaseUrl(sheet);
@@ -54,6 +55,10 @@ export function renderFullSite(spec: SiteSpec, sheet: ClientSheet): SiteBundle {
   bundle["sitemap.xml"] = generateSitemap(baseUrl, pages);
   bundle["robots.txt"] = generateRobots(baseUrl);
   bundle["site.webmanifest"] = generateManifest(sheet, spec);
+
+  // Assets déterministes
+  bundle["favicon.svg"] = generateFavicon(sheet.BUSINESS_NAME, spec.palette.primary);
+  bundle["og-image.svg"] = generateOgImage(sheet, spec);
 
   // Hébergement
   bundle["vercel.json"] = JSON.stringify({ cleanUrls: true }, null, 2);
