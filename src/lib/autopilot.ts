@@ -222,11 +222,12 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
           .where(and(
             isNotNull(prospects.deployedUrl),
             isNotNull(prospects.siteSpec),
+            // Uniquement les hotlinks/404 : un hero en dégradé SVG est un
+            // fallback valide, le rafraîchir en boucle gaspillerait le tick.
             sql`(${prospects.siteHtml} like ${"%images.unsplash.com%"}
               or ${prospects.siteHtml} like ${"%assets.gosite.digital%"}
-              or ${prospects.siteBundle}::text not like ${"%images/hero.%"}
-              or ${prospects.siteBundle}::text not like ${"%images/about.%"}
-              or ${prospects.siteBundle}::text not like ${"%images/work-1.%"} )`,
+              or ${prospects.siteBundle}::text like ${"%images.unsplash.com%"}
+              or ${prospects.siteBundle}::text like ${"%assets.gosite.digital%"} )`,
           ))
           .orderBy(asc(prospects.updatedAt))
           .limit(1);
