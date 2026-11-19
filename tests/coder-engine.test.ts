@@ -147,6 +147,21 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   check("partiel: hero repris d'une photo locale", Object.keys(r.bundle).some((k) => /^images\/hero\.(webp|jpg)$/.test(k)));
 }
 
+// ── Re-rendu domaine : hero repris d'une photo locale si absent ─────────────
+{
+  const old = {
+    "index.html": "old",
+    "images/about.jpg": "AAAA",
+    "images/work-1.jpg": "BBBB",
+    "images/work-2.jpg": "CCCC",
+  };
+  const r = renderEngineBundle(specFixture, sheet, 11, "domain-shop", "https://client.example.com", old);
+  const idx = r["index.html"] ?? "";
+  check("domaine: hero aliasé localement", Boolean(r["images/hero.jpg"]) && idx.includes("/images/hero.jpg"));
+  check("domaine: pas de dégradé hero", !idx.includes("data:image/svg+xml") || idx.includes("/images/hero.jpg"));
+  check("domaine: photos conservées", r["images/work-1.jpg"] === "BBBB" && r["images/hero.jpg"] === "BBBB");
+}
+
 // ── Rafraîchissement sans LLM : spec conservé + images locales ──────────────
 {
   const r = await renderRefreshedBundleV7(specFixture, sheet, 10, "refresh-shop", undefined, fetchImg);

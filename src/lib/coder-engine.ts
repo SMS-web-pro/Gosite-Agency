@@ -88,6 +88,13 @@ export function buildEngineSheet(
   return out;
 }
 
+/** Première photo locale utilisable comme hero de secours (galerie puis about). */
+function donorImageKey(files: Record<string, string> | null | undefined): string | null {
+  const keys = Object.keys(files ?? {});
+  return ["images/work-1", "images/about"]
+    .flatMap((base) => keys.filter((k) => k.startsWith(`${base}.`)))[0] ?? null;
+}
+
 /** Complète les slots manquants : pack R2 (téléchargé localement) puis, en
  *  dernier recours, dégradé SVG inline (data URI) — jamais d'URL externe ou
  *  de fichier absent du bundle. */
@@ -120,8 +127,7 @@ async function completeImages(
   // about), on la réutilise comme hero. Un vrai visuel vaut mieux qu'un aplat,
   // et le fichier est déjà dans le bundle (zéro hotlink).
   if (!out.hero && out.files) {
-    const donorKey = ["images/work-1", "images/about"]
-      .flatMap((base) => Object.keys(out.files ?? {}).filter((k) => k.startsWith(`${base}.`)))[0];
+    const donorKey = donorImageKey(out.files);
     if (donorKey) {
       const ext = donorKey.split(".").pop() ?? "jpg";
       const heroKey = `images/hero.${ext}`;
@@ -201,8 +207,12 @@ export function renderEngineBundle(
 ): Record<string, string> {
   const rawImgs = imagesFromBundle(existingBundle);
   const fallback = generateFallbackPack(spec.palette.primary, spec.palette.accent);
+  // Pas de hero local mais des photos existent → on les réutilise (alias
+  // images/hero.<ext>) au lieu d'aplatir le hero en dégradé SVG.
+  const donor = rawImgs.hero ? null : donorImageKey(existingBundle);
+  const heroAlias = donor ? `images/hero.${donor.split(".").pop() ?? "jpg"}` : null;
   const imgs: EngineImages = {
-    hero: rawImgs.hero ?? fallback.hero,
+    hero: rawImgs.hero ?? heroAlias ?? fallback.hero,
     about: rawImgs.about ?? fallback.about,
     gallery: rawImgs.gallery.length ? rawImgs.gallery : fallback.gallery,
   };
@@ -211,6 +221,7 @@ export function renderEngineBundle(
   for (const [k, v] of Object.entries(existingBundle ?? {})) {
     if (k.startsWith("images/") && v) bundle[k] = v;
   }
+  if (donor && heroAlias && existingBundle?.[donor]) bundle[heroAlias] = existingBundle[donor];
   return bundle;
 }
 
