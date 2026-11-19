@@ -116,6 +116,45 @@ const EN: UiLabels = {
   legalUpdated: "Last updated",
 };
 
+const AR: UiLabels = {
+  navHome: "الرئيسية",
+  navServices: "الخدمات",
+  navAbout: "من نحن",
+  navReviews: "التقييمات",
+  navContact: "اتصل بنا",
+  call: "اتصل",
+  whatsapp: "واتساب",
+  menu: "فتح القائمة",
+  close: "إغلاق القائمة",
+  hours: "ساعات العمل",
+  formName: "الاسم",
+  formEmail: "البريد الإلكتروني",
+  formPhone: "الهاتف",
+  formMessage: "الرسالة",
+  formService: "الخدمة المطلوبة",
+  formChoose: "اختر خدمة",
+  formSend: "إرسال الطلب",
+  privacy: "الخصوصية",
+  terms: "الشروط",
+  footerRights: "جميع الحقوق محفوظة.",
+  mapTitle: "الخريطة والموقع",
+  starsOutOf: "من 5",
+  skip: "الانتقال إلى المحتوى",
+  legalNav: "معلومات قانونية",
+  contactTitle: "اتصل بنا",
+  breadcrumb: "مسار التنقل",
+  relatedTitle: "خدمات ذات صلة",
+  ctaTitle: "هل تحتاج هذه الخدمة؟",
+  ctaText: "اتصل بنا أو اطلب عرض سعر مجاني.",
+  backHome: "العودة إلى الرئيسية",
+  notFoundTitle: "الصفحة غير موجودة",
+  notFoundText: "الصفحة المطلوبة غير موجودة أو تم نقلها.",
+  missionTitle: "مهمتنا",
+  valuesTitle: "قيمنا",
+  legalUpdated: "آخر تحديث",
+};
+
 export function labels(lang: string | undefined): UiLabels {
-  return (lang ?? "en").slice(0, 2).toLowerCase() === "fr" ? FR : EN;
+  const l = (lang ?? "en").slice(0, 2).toLowerCase();
+  return l === "fr" ? FR : l === "ar" ? AR : EN;
 }
