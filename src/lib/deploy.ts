@@ -23,7 +23,8 @@ export function slugifyId(name: string): string {
     .replace(/[̀-ͯ]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 28);
+    .slice(0, 28)
+    .replace(/-+$/g, ""); // une troncature ne doit jamais laisser un tiret final (domaine Cloudflare invalide)
   return s || "site";
 }
 

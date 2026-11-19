@@ -585,7 +585,7 @@ async function aiSlug(p: Prospect): Promise<string> {
 // Garantit l'unicité du siteSlug : sans le préfixe à id, deux commerces du même
 // nom peuvent aboutir au même sous-domaine — on suffixe en cas de collision.
 async function uniqueSiteSlug(candidate: string, selfId: number): Promise<string> {
-  const base = candidate.slice(0, 36);
+  const base = candidate.slice(0, 36).replace(/-+$/g, "") || "site";
   let s = base;
   let n = 2;
   for (;;) {
