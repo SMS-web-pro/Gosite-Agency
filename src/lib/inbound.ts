@@ -62,6 +62,16 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
+export const LLM_EMAIL_MAX_CHARS = 2000;
+
+/** Anti prompt-injection (spec 4.1) : tout contenu externe envoyé au LLM est
+ *  nettoyé (HTML retiré), tronqué et encadré de délimiteurs que le prompt
+ *  système interdit d'interpréter comme des instructions. */
+export function wrapEmailContent(text: string, maxChars = LLM_EMAIL_MAX_CHARS): string {
+  const clean = stripHtml(text).slice(0, maxChars).trim();
+  return `<email_content>\n${clean}\n</email_content>`;
+}
+
 const truthy = (v: string | undefined) => {
   const t = (v ?? "").trim().toLowerCase();
   return t !== "" && t !== "no" && t !== "false";
