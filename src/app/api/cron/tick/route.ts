@@ -27,14 +27,36 @@ async function authorized(req: NextRequest): Promise<boolean> {
 // suite et laisse le pipeline tourner dans la durée de vie restante de la
 // fonction (60 s max sur Hobby) — les déploiements débordants repartent au
 // tick suivant (le lead reste site_built, sans incrément de failCount).
+// Spec 1.5 : le tick ne doit jamais mourir silencieusement dans after().
+// runAutopilotTick gère déjà ses erreurs internes ; ce garde-fou couvre les
+// échecs survenus AVANT (DB down, verrou, seed agents) et les trace en DB.
+async function runTickSafely(): Promise<void> {
+  try {
+    await runAutopilotTick();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    try {
+      const { logActivity } = await import("@/lib/activity");
+      await logActivity({
+        agentKey: "autopilot",
+        action: "tick_erreur",
+        message: `Tick non démarré : ${msg}`.slice(0, 300),
+        level: "error",
+      });
+    } catch {
+      console.error("[cron/tick] tick failed:", msg);
+    }
+  }
+}
+
 export async function GET(req: NextRequest) {
   if (!(await authorized(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  after(async () => { await runAutopilotTick(); });
+  after(runTickSafely);
   return NextResponse.json({ ok: true, queued: true });
 }
 
 export async function POST(req: NextRequest) {
   if (!(await authorized(req))) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-  after(async () => { await runAutopilotTick(); });
+  after(runTickSafely);
   return NextResponse.json({ ok: true, queued: true });
 }

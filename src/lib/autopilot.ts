@@ -22,9 +22,11 @@ export type TickSummary = {
   missionsRun: number;
   advanced: Record<string, number>;
   errors: string[];
+  processed: number;
   evolved?: { agent: string; summary: string; skills: string[] };
   skipped?: string;
   deadlineReached?: boolean;
+  capped?: boolean;
 };
 
 const TICK_LOCK_KEY = "TICK_LOCK";
@@ -35,6 +37,10 @@ const TICK_LOCK_STALE_MS = 90_000;
 // Budget du tick : Vercel Hobby = 60 s max par fonction. On s'arrête à 45 s
 // pour garder la marge (réponse + libération du lease) avant le kill.
 const TICK_DEADLINE_MS = 45_000;
+// Spec 1.5 (option B) : un tick ne traite jamais tout le pipeline. Maximum
+// 5 prospects avancés par tick (toutes étapes confondues) : le tourniquet
+// d'étapes et le budget de 45 s gardent le reste pour les ticks suivants.
+const TICK_MAX_PROSPECTS = 5;
 
 // Verrou de tick : un seul cycle à la fois (cron + RIO + manuel ne doivent
 // jamais traiter le même batch en parallèle). Claim atomique avec expiration
@@ -92,6 +98,7 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
     missionsRun: 0,
     advanced: {},
     errors: [],
+    processed: 0,
   };
   if (!summary.autopilot && !opts.force) return summary;
 
@@ -100,10 +107,39 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
     return { ...summary, skipped: "tick déjà en cours (verrou actif)" };
   }
   try {
-    return await runTickBody(summary);
+    const result = await runTickBody(summary);
+    await logTickSummary(result);
+    return result;
+  } catch (err) {
+    // Spec 1.5 : plus jamais d'erreur silencieuse dans after() — le tick
+    // échoué est tracé en DB (activities) et signalé, puis le lease est
+    // libéré par le finally : le tick suivant repart proprement.
+    const msg = err instanceof Error ? err.message : String(err);
+    summary.errors.push(`tick: ${msg}`);
+    await logTickSummary(summary).catch(() => undefined);
+    await logActivity({
+      agentKey: "autopilot", action: "tick_erreur",
+      message: `Tick interrompu : ${msg}`.slice(0, 300), level: "error",
+    }).catch(() => undefined);
+    await notifyTelegram(`⚠️ <b>Auto-pilote</b> — tick interrompu : ${msg.slice(0, 200)}`).catch(() => undefined);
+    return summary;
   } finally {
     await releaseTickLease(lease);
   }
+}
+
+/** Trace le résultat de chaque tick utile dans activities (spec 1.5). */
+async function logTickSummary(summary: TickSummary): Promise<void> {
+  const moved = Object.values(summary.advanced).reduce((a, b) => a + b, 0);
+  if (moved === 0 && summary.missionsRun === 0 && summary.errors.length === 0) return;
+  const detail = Object.entries(summary.advanced).map(([stage, n]) => `${stage}:${n}`).join(" ") || "aucune étape";
+  await logActivity({
+    agentKey: "autopilot", action: "tick_termine",
+    message: `Tick : ${summary.processed} lead(s) traité(s) · ${detail} · missions ${summary.missionsRun}` +
+      `${summary.capped ? " · plafond 5 atteint" : ""}${summary.deadlineReached ? " · deadline 45s" : ""}` +
+      `${summary.errors.length ? ` · ${summary.errors.length} erreur(s)` : ""}`.slice(0, 300),
+    level: summary.errors.length ? "warn" : "success",
+  });
 }
 
 async function runTickBody(summary: TickSummary): Promise<TickSummary> {
@@ -220,8 +256,10 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
     // garde le reste ; une étape interrompue reprend au tick suivant (batch
     // limité, pas de perte).
     const stepEnd = step.agent === "deployer" ? deadline : Math.min(deadline, Date.now() + 7_000);
-    const batch = await take(step.stage, step.limit);
+    if (summary.processed >= TICK_MAX_PROSPECTS) { summary.capped = true; break; }
+    const batch = await take(step.stage, Math.min(step.limit, TICK_MAX_PROSPECTS - summary.processed));
     for (const p of batch) {
+      if (summary.processed >= TICK_MAX_PROSPECTS) { summary.capped = true; break; }
       if (Date.now() > stepEnd) { if (Date.now() > deadline) summary.deadlineReached = true; break; }
       // Un déploiement Cloudflare peut consommer la minute entière à lui seul :
       // lancé trop tard, il déborde de la durée de vie de la fonction (60 s)
@@ -229,6 +267,7 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
       // et repartira au tick suivant, à jeun.
       if (step.agent === "deployer" && Date.now() > deadline - 25_000) { summary.deadlineReached = true; break; }
       try {
+        summary.processed++;
         await step.fn(p);
         // Succès : remet le compteur d'échecs à zéro (uniquement si utile).
         if (p.failCount > 0) {
