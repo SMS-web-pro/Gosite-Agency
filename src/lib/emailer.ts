@@ -174,6 +174,16 @@ Angle de vente (fiche): ${sheet.SELLING_ANGLE ?? "—"}
 Accroche du site créé: ${sheet.TAGLINE ?? "—"}
 Analyse du potentiel: ${p.aiInsight ?? "—"}`;
 
+  // Spec 3.3 — le vocabulaire de l'offre suit le businessModel du SiteSpec
+  // (un gym = abonnement/essai, pas « devis » ; un restaurant = menu/réservation…).
+  const businessModel = p.siteSpec?.businessModel ?? "";
+  const modelNote = businessModel
+    ? lang === "en"
+      ? `Business model (SiteSpec): ${businessModel} — adapt the vocabulary accordingly (membership ≠ contractor ≠ restaurant ≠ retail).`
+      : `Business model (SiteSpec) : ${businessModel} — adapte le vocabulaire en conséquence (membership ≠ contractor ≠ restaurant ≠ retail).`
+    : "";
+  const factsWithModel = modelNote ? `${facts}\n${modelNote}` : facts;
+
   const brief =
     lang === "en"
       ? "Write a cold outreach email in NATIVE US ENGLISH proposing a website that has ALREADY BEEN BUILT for this business. Goal: make them WANT to view the site and reply. Persona: a human, direct and respectful professional (no first names, polite 'you'), never pushy. Framework PAS, kept light: Problem (one verifiable fact: their Google rating/review count and the absence of a website), Agitate (ONE sentence max: what it costs them daily), Solution (their site already exists, live within 48h). The price, timeline, inclusions and call to action are added by the email template — do NOT write them. FORBIDDEN: percentages and unverifiable statistics, the word 'free', unproven superlatives, fake urgency, invented testimonials, 'I hope this finds you well'. One exclamation mark maximum in the whole email."
@@ -187,8 +197,8 @@ Analyse du potentiel: ${p.aiInsight ?? "—"}`;
   const pass1 = await agentThinkJson<SalesCopyRaw>({
     agent: "saler",
     task: "redaction_offre_p1",
-    instruction: `${brief}\n${jsonShape}`,
-    input: facts,
+    instruction: `${brief}${modelNote ? `\n${modelNote}` : ""}\n${jsonShape}`,
+    input: factsWithModel,
     maxTokens: 900,
     temperature: 0.8,
     lang,
@@ -203,7 +213,7 @@ Analyse du potentiel: ${p.aiInsight ?? "—"}`;
         : "Tu es directeur commercial senior. Critique puis RÉÉCRIS ce brouillon d'email de prospection : plus de spécificité, de clarté, de brièveté et de crédibilité ; rende l'appel à l'action évident. Garde la structure JSON avec les MÊMES clés et les mêmes limites. Tout doit rester en français — supprime tout mot anglais. Un seul point d'exclamation maximum.") +
       `\n${jsonShape}`,
     input: (lang === "en" ? "BUSINESS SHEET:\n" : "FICHE DU COMMERCE :\n") +
-      `${facts}\n\n${lang === "en" ? "DRAFT TO REVIEW:" : "PROPOSITION À CRITIQUER :"}\n${JSON.stringify(pass1)}`,
+      `${factsWithModel}\n\n${lang === "en" ? "DRAFT TO REVIEW:" : "PROPOSITION À CRITIQUER :"}\n${JSON.stringify(pass1)}`,
     maxTokens: 900,
     temperature: 0.4,
     lang,

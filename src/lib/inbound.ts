@@ -104,7 +104,7 @@ export type InboundAgent = (typeof AGENTS)[number];
 
 export function coerceInboundDecision(
   raw: unknown,
-): { agent: InboundAgent; reply: string; needsHuman: boolean } | null {
+): { agent: InboundAgent; reply: string; needsHuman: boolean; siteEdit: string | null } | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
   const agentRaw = typeof o.agent === "string" ? o.agent.toLowerCase().trim() : "";
@@ -112,7 +112,9 @@ export function coerceInboundDecision(
   const agent = agentRaw as InboundAgent;
   const reply = typeof o.reply === "string" ? o.reply.trim() : "";
   if (!reply) return null;
-  return { agent, reply, needsHuman: o.needsHuman === true };
+  const siteEdit =
+    typeof o.siteEdit === "string" && o.siteEdit.trim() ? o.siteEdit.trim().slice(0, 500) : null;
+  return { agent, reply, needsHuman: o.needsHuman === true, siteEdit };
 }
 
 export function sanitizeReplyUrls(reply: string, allowedUrls: string[]): string {

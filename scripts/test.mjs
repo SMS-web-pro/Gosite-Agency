@@ -9,7 +9,7 @@ import { cpSync, rmSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { execFileSync } from "node:child_process";
 import { globSync } from "node:fs";
 
-const LIB_FILES = ["format.ts", "auth.ts", "llm-fetch.ts", "niches.ts", "images.ts", "images-search.ts", "mapper.ts", "site-template.ts", "dnc.ts", "llm-coerce.ts", "inbound.ts", "mime.ts", "gemini-keys.ts", "track.ts", "site-config.ts", "bundle.ts", "bundle-images.ts", "coder.ts", "coder-engine.ts", "form-receive.ts", "telegram-health.ts", "fx.ts", "offer-copy.ts", "emailer.ts"];
+const LIB_FILES = ["format.ts", "auth.ts", "llm-fetch.ts", "niches.ts", "images.ts", "images-search.ts", "mapper.ts", "site-template.ts", "dnc.ts", "llm-coerce.ts", "inbound.ts", "mime.ts", "gemini-keys.ts", "track.ts", "site-config.ts", "bundle.ts", "bundle-images.ts", "coder.ts", "coder-engine.ts", "site-editor.ts", "form-receive.ts", "telegram-health.ts", "fx.ts", "offer-copy.ts", "emailer.ts"];
 const LIB_DIR = "tests/_lib";
 
 mkdirSync(LIB_DIR, { recursive: true });
@@ -44,7 +44,7 @@ for (const f of LIB_FILES) {
     src = src.replace(/from "\.\/llm\.ts"/g, 'from "./coder-llm-stub.ts"').replace(/from "\.\/gemini\.ts"/g, 'from "./coder-gemini-stub.ts"');
     for (const [name, content] of Object.entries(CODER_STUBS)) writeFileSync(`${LIB_DIR}/${name}`, content);
   }
-  if (f === "coder-engine.ts") {
+  if (f === "coder-engine.ts" || f === "site-editor.ts") {
     // Les modules site-engine sont déjà aplatis dans tests/_lib.
     src = src
       .replace(/from "\.\.\/site-engine\/([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)"/g, (_m, p) => {

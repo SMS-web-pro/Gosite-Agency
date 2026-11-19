@@ -71,6 +71,11 @@ check("coerce: reply vide", coerceInboundDecision({ agent: "saler", reply: "  " 
 check("coerce: null", coerceInboundDecision(null) === null);
 const dec2 = coerceInboundDecision({ agent: "support", reply: "C'est réglé." });
 check("coerce: needsHuman defaut false", dec2 !== null && dec2.needsHuman === false);
+const decEdit = coerceInboundDecision({ agent: "support", reply: "C'est fait.", siteEdit: "Remplacer le téléphone par +212 600000000" });
+check("coerce: siteEdit repris", decEdit !== null && decEdit.siteEdit === "Remplacer le téléphone par +212 600000000");
+check("coerce: siteEdit absent -> null", dec2 !== null && dec2.siteEdit === null);
+check("coerce: siteEdit vide -> null", coerceInboundDecision({ agent: "support", reply: "x", siteEdit: "  " })?.siteEdit === null);
+check("coerce: siteEdit tronqué 500", (coerceInboundDecision({ agent: "support", reply: "x", siteEdit: "a".repeat(600) })?.siteEdit ?? "").length === 500);
 
 // Whitelist d'URL (anti prompt-injection)
 const san = sanitizeReplyUrls("Voir https://evil.com/x et https://whop.com/pay/abc", ["https://whop.com/pay/abc"]);

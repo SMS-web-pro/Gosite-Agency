@@ -70,6 +70,58 @@ function langFor(p: Prospect): "fr" | "en" {
     : "fr";
 }
 
+// Spec 3.1 — Support édite le site : SiteSpec corrigé par le LLM → re-rendu
+// déterministe → redéploiement. Retourne l'URL finale (le site reste joignable
+// même si le redeploy échoue : l'ancien bundle reste en ligne).
+async function applySiteEdit(
+  full: Prospect,
+  request: string,
+): Promise<{ ok: boolean; updated?: boolean; url?: string; error?: string }> {
+  if (!full.siteSpec) return { ok: false, error: "SiteSpec absent (site généré avant le moteur v7)" };
+  const slug = full.siteSlug ?? "";
+  if (!slug) return { ok: false, error: "slug du site absent" };
+  try {
+    const { editSiteSpec } = await import("./site-editor");
+    const edit = await editSiteSpec(full.siteSpec, request);
+    if (!edit.updated) return { ok: true, updated: false };
+    const { renderEngineBundle } = await import("./coder-engine");
+    const base = full.deployedUrl || full.domainUrl || `https://${slug}.gosite.digital`;
+    const bundle = renderEngineBundle(edit.spec, full.clientData ?? {}, full.id, slug, base, full.siteBundle);
+    const { deploySiteBundle } = await import("./deploy");
+    const res = await deploySiteBundle(slug, bundle);
+    if (!res.ok) return { ok: false, error: res.error ?? "redéploiement échoué" };
+    const url = res.url || full.deployedUrl || base;
+    await db
+      .update(prospects)
+      .set({
+        siteSpec: edit.spec,
+        siteBundle: bundle,
+        siteHtml: bundle["index.html"] ?? "",
+        deployedUrl: url,
+        updatedAt: new Date(),
+      })
+      .where(eq(prospects.id, full.id));
+    await logActivity({
+      agentKey: "support",
+      action: "site_modifie",
+      message: `Site de ${full.businessName} modifié et redéployé : ${edit.summary || request.slice(0, 120)} → ${url}`,
+      level: "success",
+      prospectId: full.id,
+    });
+    return { ok: true, updated: true, url };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    await logActivity({
+      agentKey: "support",
+      action: "site_edition_echec",
+      message: `Édition du site de ${full.businessName} impossible : ${message}`,
+      level: "error",
+      prospectId: full.id,
+    });
+    return { ok: false, error: message };
+  }
+}
+
 export async function processInboundRow(id: number): Promise<{ ok: boolean; status: string }> {
   const rows = await db.select().from(inboundEmails).where(eq(inboundEmails.id, id)).limit(1);
   const row = rows[0];
@@ -206,16 +258,17 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     .map((m) => `[${m.dir}] ${m.subject || "(sans objet)"} : ${m.body.slice(0, 400)}`)
     .join("\n");
 
-  const decision = await agentThinkJson<{ agent: string; reply: string; needsHuman: boolean }>({
+  const decision = await agentThinkJson<{ agent: string; reply: string; needsHuman: boolean; siteEdit: string | null }>({
     agent: "saler",
     task: "reponse_entrante",
     lang,
     maxTokens: 2500,
     instruction: [
       `Tu réponds à un email entrant d'un client de l'agence GoSite Digital. Langue imposée : ${lang === "en" ? "anglais" : "français"}.`,
-      `Choisis l'agent qui signe : "saler" (questions sur le service, négociation), "paymer" (le client accepte ou veut payer), "support" (problème technique, FAQ).`,
+      `Choisis l'agent qui signe : "saler" (questions sur le service, négociation), "paymer" (le client accepte ou veut payer), "support" (problème technique, FAQ, modification du site).`,
       `Règles absolues : réponse courte (120 mots max), humaine, sans jargon ; le prix est strictement celui affiché (${lang === "en" ? "price is final" : "prix non négociable, aucune remise"}) ; n'invente AUCUNE donnée (pas de témoignage, pas de chiffre, pas de garantie) ; si le client semble confus, propose un appel ; si la demande est insolite, juridique ou si tu n'es pas sûr, mets needsHuman=true.`,
-      `Réponds uniquement en JSON : {"agent":"saler|paymer|support","reply":"...","needsHuman":false}`,
+      `Si le client demande une MODIFICATION de son site (téléphone, email, adresse, horaires, texte, service, FAQ…), mets "siteEdit" à la demande reformulée en une phrase impérative (ex: "Remplacer le téléphone affiché par +212 6 00 00 00 00"). Sinon "siteEdit": null.`,
+      `Réponds uniquement en JSON : {"agent":"saler|paymer|support","reply":"...","needsHuman":false,"siteEdit":null}`,
     ].join("\n"),
     input: [
       `Commerce : ${p.businessName} (${p.city ?? ""} — ${p.country ?? ""})`,
@@ -241,6 +294,35 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
     return { ok: true, status: "human" };
   }
 
+  // ── Support : modification du site (spec 3.1) ───────────────────────────
+  // Le prospect chargé est la projection LÉGÈRE (sans siteSpec/siteBundle) :
+  // on recharge la ligne complète uniquement quand une édition est demandée.
+  let siteUrlAfterEdit: string | null = null;
+  if (parsed.siteEdit) {
+    const fullRows = await db.select().from(prospects).where(eq(prospects.id, p.id)).limit(1);
+    const full = fullRows[0];
+    if (!full?.siteSpec) {
+      await logActivity({
+        agentKey: "support",
+        action: "site_edition_ignoree",
+        message: `Modification demandée par ${p.businessName} mais aucun SiteSpec v7 en base — réponse sans édition.`,
+        level: "info",
+        prospectId: p.id,
+      });
+    } else {
+      const edit = await applySiteEdit(full, parsed.siteEdit);
+      if (!edit.ok) {
+        await setStatus(id, "human");
+        await notifyTelegram(
+          `⚠️ <b>Support</b> — modification du site de <b>${escapeHtml(p.businessName)}</b> impossible : ${escapeHtml(edit.error ?? "?")}. Intervention humaine.`,
+        );
+        await logActivity({ agentKey: "support", action: "site_edition_human", message: `Édition du site impossible pour ${p.businessName} — intervention humaine.`, level: "warn", prospectId: p.id });
+        return { ok: true, status: "human" };
+      }
+      if (edit.url) siteUrlAfterEdit = edit.url;
+    }
+  }
+
   // ── Paymer : lien de paiement (réutilisé tant que pending) ──────────────
   let paymentUrl = p.paymentUrl ?? "";
   if (parsed.agent === "paymer" && !reusePending) {
@@ -257,9 +339,10 @@ export async function processInboundRow(id: number): Promise<{ ok: boolean; stat
   // Anti prompt-injection : seules nos URL peuvent sortir. Et le LLM annonce
   // parfois « voici le lien » sans l'insérer : injection déterministe du lien
   // de paiement et du site AVANT le sanitize.
+  const siteUrl = siteUrlAfterEdit ?? p.deployedUrl;
   const reply = sanitizeReplyUrls(
-    ensureLinksInReply(parsed.reply, { paymentUrl, siteUrl: p.deployedUrl, lang }),
-    [paymentUrl, p.deployedUrl ?? ""].filter(Boolean),
+    ensureLinksInReply(parsed.reply, { paymentUrl, siteUrl, lang }),
+    [paymentUrl, siteUrl ?? ""].filter(Boolean),
   );
   const lastOut = await db.select({ subject: emails.subject }).from(emails).where(eq(emails.prospectId, p.id)).orderBy(desc(emails.createdAt)).limit(1);
   const subject = `Re: ${lastOut[0]?.subject || row.subject || "Votre site web"}`;
