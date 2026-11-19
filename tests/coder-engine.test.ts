@@ -144,6 +144,7 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   const idx = r.bundle["index.html"] ?? "";
   check("partiel: ancienne URL hero absente", !idx.includes("images.unsplash.com"));
   check("partiel: hero référencé dans le bundle", [...idx.matchAll(/<img[^>]+src="([^"]+)"/g)].every((m) => m[1].startsWith("data:") || Boolean(r.bundle[m[1].replace(/^https:\/\/[^/]+\//, "")])));
+  check("partiel: hero repris d'une photo locale", Object.keys(r.bundle).some((k) => /^images\/hero\.(webp|jpg)$/.test(k)));
 }
 
 // ── Rafraîchissement sans LLM : spec conservé + images locales ──────────────

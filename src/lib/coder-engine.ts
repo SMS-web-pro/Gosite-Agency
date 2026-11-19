@@ -116,6 +116,18 @@ async function completeImages(
       };
     }
   }
+  // Dernier réflexe avant le dégradé : si une photo locale existe (galerie ou
+  // about), on la réutilise comme hero. Un vrai visuel vaut mieux qu'un aplat,
+  // et le fichier est déjà dans le bundle (zéro hotlink).
+  if (!out.hero && out.files) {
+    const donorKey = ["images/work-1", "images/about"]
+      .flatMap((base) => Object.keys(out.files ?? {}).filter((k) => k.startsWith(`${base}.`)))[0];
+    if (donorKey) {
+      const ext = donorKey.split(".").pop() ?? "jpg";
+      const heroKey = `images/hero.${ext}`;
+      out = { ...out, files: { ...out.files, [heroKey]: out.files[donorKey] }, hero: heroKey };
+    }
+  }
   const fallback = generateFallbackPack(colors.primary, colors.accent);
   return {
     files: out.files,

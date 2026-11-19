@@ -227,7 +227,10 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
             sql`(${prospects.siteHtml} like ${"%images.unsplash.com%"}
               or ${prospects.siteHtml} like ${"%assets.gosite.digital%"}
               or ${prospects.siteBundle}::text like ${"%images.unsplash.com%"}
-              or ${prospects.siteBundle}::text like ${"%assets.gosite.digital%"} )`,
+              or ${prospects.siteBundle}::text like ${"%assets.gosite.digital%"}
+              or (${prospects.siteBundle}::text not like ${"%images/hero.%"}
+                  and (${prospects.siteBundle}::text like ${"%images/work-1.%"}
+                       or ${prospects.siteBundle}::text like ${"%images/about.%"})) )`,
           ))
           .orderBy(asc(prospects.updatedAt))
           .limit(1);
