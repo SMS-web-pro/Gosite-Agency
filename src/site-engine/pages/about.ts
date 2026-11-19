@@ -2,6 +2,7 @@ import type { AboutPage, SiteSpec } from "../site-spec.schema";
 import type { ClientSheet } from "../types";
 import { escapeHtml } from "../utils/escape";
 import { labels } from "../utils/labels";
+import { formatPhone } from "../utils/format-phone";
 import { imgTag } from "../components/common/ui";
 import { renderHeader } from "../components/common/header";
 import { renderFooter } from "../components/common/footer";
@@ -17,6 +18,7 @@ export function renderAboutPage(
 ): string {
   const L = labels(spec.lang);
   const phone = (sheet.PHONE_LINK ?? "").replace(/[^\d+]/g, "");
+  const phoneText = formatPhone(sheet.PHONE, sheet.COUNTRY) || phone;
   const business = escapeHtml(sheet.BUSINESS_NAME ?? "");
 
   const body = `${renderHeader(sheet, spec)}
@@ -62,7 +64,7 @@ export function renderAboutPage(
         <p>${escapeHtml(L.ctaText)}</p>
       </div>
       <div class="hero-actions">
-        ${phone ? `<a class="btn btn-accent" href="tel:${escapeHtml(phone)}">${escapeHtml(L.call)} ${escapeHtml(sheet.PHONE ?? phone)}</a>` : ""}
+        ${phone ? `<a class="btn btn-accent" href="tel:${escapeHtml(phone)}">${escapeHtml(L.call)} ${escapeHtml(phoneText)}</a>` : ""}
         <a class="btn btn-ghost" href="index.html#contact">${escapeHtml(L.navContact)}</a>
       </div>
     </div>

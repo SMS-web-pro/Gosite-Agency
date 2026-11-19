@@ -13,6 +13,9 @@ export function escapeHtml(value: string): string {
   return String(value ?? "").replace(/[&<>"']/g, (c) => ENTITIES[c]);
 }
 
+/** Alias historique de la spec 2.8 (`esc`) — même garantie, même table. */
+export const esc = escapeHtml;
+
 /** URL sûre : http(s), tel:, mailto:, wa.me uniquement — sinon "#". */
 export function safeUrl(value: string | undefined | null): string {
   const v = String(value ?? "").trim();

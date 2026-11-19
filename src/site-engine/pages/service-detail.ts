@@ -2,6 +2,7 @@ import type { ServicePage, SiteSpec } from "../site-spec.schema";
 import type { ClientSheet } from "../types";
 import { escapeHtml } from "../utils/escape";
 import { labels } from "../utils/labels";
+import { formatPhone } from "../utils/format-phone";
 import { ctaExtra, ctaHref, iconBadge } from "../components/common/ui";
 import { renderHeader } from "../components/common/header";
 import { renderFooter } from "../components/common/footer";
@@ -23,6 +24,7 @@ export function renderServiceDetailPage(
   const L = labels(spec.lang);
   const business = escapeHtml(sheet.BUSINESS_NAME ?? "");
   const phone = (sheet.PHONE_LINK ?? "").replace(/[^\d+]/g, "");
+  const phoneText = formatPhone(sheet.PHONE, sheet.COUNTRY) || phone;
   const related = spec.servicePages.filter((s) => sp.relatedServices.includes(s.slug) && s.slug !== sp.slug);
 
   const body = `${renderHeader(sheet, spec)}
@@ -77,7 +79,7 @@ export function renderServiceDetailPage(
         <p>${escapeHtml(L.ctaText)}</p>
       </div>
       <div class="hero-actions">
-        ${phone ? `<a class="btn btn-accent" href="tel:${escapeHtml(phone)}">${escapeHtml(L.call)} ${escapeHtml(sheet.PHONE ?? phone)}</a>` : ""}
+        ${phone ? `<a class="btn btn-accent" href="tel:${escapeHtml(phone)}">${escapeHtml(L.call)} ${escapeHtml(phoneText)}</a>` : ""}
         <a class="btn btn-ghost" href="index.html#contact">${escapeHtml(L.navContact)}</a>
       </div>
     </div>

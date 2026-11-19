@@ -93,6 +93,8 @@ for (const f of LIB_FILES) {
     ["css/components.ts", "components.ts"],
     ["utils/escape.ts", "escape.ts"],
     ["utils/labels.ts", "labels.ts"],
+    ["utils/format-address.ts", "format-address.ts"],
+    ["utils/format-phone.ts", "format-phone.ts"],
     ["components/common/ui.ts", "ui.ts"],
     ["components/common/header.ts", "header.ts"],
     ["components/common/footer.ts", "footer.ts"],

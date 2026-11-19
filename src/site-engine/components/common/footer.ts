@@ -2,12 +2,16 @@ import type { SiteSpec } from "../../site-spec.schema";
 import type { ClientSheet } from "../../types";
 import { escapeHtml, safeUrl } from "../../utils/escape";
 import { labels } from "../../utils/labels";
+import { formatAddress } from "../../utils/format-address";
+import { formatPhoneFromSheet } from "../../utils/format-phone";
 
 export function renderFooter(sheet: ClientSheet, spec: SiteSpec): string {
   const L = labels(spec.lang);
   const name = escapeHtml(sheet.BUSINESS_NAME ?? "");
   const year = new Date().getFullYear();
   const phone = (sheet.PHONE_LINK ?? "").replace(/[^\d+]/g, "");
+  const address = formatAddress(sheet);
+  const phoneText = formatPhoneFromSheet(sheet) || sheet.PHONE || phone;
   const email = /^[^@\s]+@[^@\s]+$/.test(sheet.EMAIL ?? "") ? sheet.EMAIL : "";
   const hours = [sheet.HOURS_WEEKDAY, sheet.HOURS_SAT, sheet.HOURS_SUN].filter(Boolean);
 
@@ -19,8 +23,8 @@ export function renderFooter(sheet: ClientSheet, spec: SiteSpec): string {
     </div>
     <div class="footer-col">
       <h4>${escapeHtml(L.contactTitle)}</h4>
-      <p>${escapeHtml(sheet.ADDRESS ?? "")}<br>${escapeHtml(sheet.CITY ?? "")} ${escapeHtml(sheet.ZIP ?? "")}</p>
-      ${phone ? `<p><a href="tel:${escapeHtml(phone)}">${escapeHtml(sheet.PHONE ?? phone)}</a></p>` : ""}
+      ${address ? `<p>${escapeHtml(address)}</p>` : ""}
+      ${phone ? `<p><a href="tel:${escapeHtml(phone)}">${escapeHtml(phoneText)}</a></p>` : ""}
       ${email ? `<p><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></p>` : ""}
     </div>
     ${hours.length > 0 ? `<div class="footer-col">

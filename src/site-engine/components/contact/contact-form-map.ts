@@ -2,6 +2,8 @@ import type { HomeSection, SiteSpec } from "../../site-spec.schema";
 import type { ClientSheet } from "../../types";
 import { escapeHtml, safeUrl } from "../../utils/escape";
 import { labels } from "../../utils/labels";
+import { formatAddress } from "../../utils/format-address";
+import { formatPhone } from "../../utils/format-phone";
 import { sectionOpen } from "../common/ui";
 
 type Contact = Extract<HomeSection, { type: "contact" }>;
@@ -38,14 +40,16 @@ export function contactFormMap(section: Contact, sheet: ClientSheet, spec: SiteS
   const action = /^https?:\/\//.test(sheet.FORM_ACTION ?? "") ? safeUrl(sheet.FORM_ACTION) : "#";
   const mapEmbed = section.showMap ? safeUrl(sheet.MAPS_EMBED) : "#";
   const services = spec.servicePages.map((s) => s.title);
+  const address = formatAddress(sheet);
+  const phoneText = formatPhone(sheet.PHONE, sheet.COUNTRY);
 
   return `${sectionOpen("section-contact", "contact")}
   <div class="container contact-grid">
     <div class="contact-copy reveal">
       <h2>${escapeHtml(section.title)}</h2>
       ${section.subtitle ? `<p class="section-sub">${escapeHtml(section.subtitle)}</p>` : ""}
-      <p class="contact-line">${escapeHtml(sheet.ADDRESS ?? "")}<br>${escapeHtml(sheet.CITY ?? "")} ${escapeHtml(sheet.ZIP ?? "")}</p>
-      ${sheet.PHONE ? `<p class="contact-line"><a href="tel:${escapeHtml((sheet.PHONE_LINK ?? "").replace(/[^\d+]/g, ""))}">${escapeHtml(sheet.PHONE)}</a></p>` : ""}
+      ${address ? `<p class="contact-line">${escapeHtml(address)}</p>` : ""}
+      ${sheet.PHONE ? `<p class="contact-line"><a href="tel:${escapeHtml((sheet.PHONE_LINK ?? "").replace(/[^\d+]/g, ""))}">${escapeHtml(phoneText)}</a></p>` : ""}
       ${mapEmbed !== "#" ? `<div class="contact-map"><iframe src="${mapEmbed}" title="${escapeHtml(L.mapTitle)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>` : ""}
     </div>
     <form class="contact-form reveal" method="post" action="${action}">
