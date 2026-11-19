@@ -7,6 +7,7 @@ import {
   buildSiteV7,
   imagesFromBundle,
   renderEngineBundle,
+  renderRefreshedBundleV7,
 } from "./_lib/coder-engine.ts";
 import { isStaleSiteBundle } from "./_lib/bundle.ts";
 import { specFixture, specSheet } from "./spec-fixture.ts";
@@ -36,6 +37,17 @@ const fetchImg = (async () =>
   const custom = buildEngineSheet(sheet, 42, "test-shop", { hero: null, about: null, gallery: [] }, "https://client.example.com/");
   check("sheet: base personnalisée sans slash final", custom.DOMAIN === "https://client.example.com");
   check("sheet: aucune image → pas de clé hero", custom.HERO_IMAGE_URL === undefined);
+  // Une URL d'image héritée de la fiche (mapper) ne doit JAMAIS survivre si le
+  // fichier n'est pas embarqué : sinon hotlink externe ou 404.
+  const inherited = buildEngineSheet(
+    { ...sheet, HERO_IMAGE_URL: "https://images.unsplash.com/photo-x", GALLERY_IMAGE_URLS: "https://images.unsplash.com/photo-y" },
+    42,
+    "test-shop",
+    { hero: null, about: null, gallery: [] },
+    "https://client.example.com/",
+  );
+  check("sheet: image héritée supprimée", inherited.HERO_IMAGE_URL === undefined && inherited.GALLERY_IMAGE_URLS === undefined);
+  check("sheet: data URI non préfixée", buildEngineSheet(sheet, 42, "t", { hero: "data:image/svg+xml,%3Csvg%3E", about: null, gallery: [] }).HERO_IMAGE_URL === "data:image/svg+xml,%3Csvg%3E");
 }
 
 // ── imagesFromBundle ────────────────────────────────────────────────────────
@@ -93,16 +105,58 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   check("domain: bundle toujours v7", nb["index.html"].includes(ENGINE_MARKER));
 }
 
-// ── Pack R2 de repli quand aucun téléchargement ne réussit ──────────────────
+// ── Pack R2 + repli SVG quand aucun téléchargement ne réussit ───────────────
 {
   const noImg = (async () => { throw new Error("offline"); }) as unknown as typeof fetch;
   const r = await buildSiteV7(sheet, 7, { slug: "fallback-shop", llm: llmOk, fetchImpl: noImg });
+  const idx = r.bundle["index.html"] ?? "";
   check("repli: aucun fichier images/", Object.keys(r.bundle).every((k) => !k.startsWith("images/")));
-  check("repli: pack R2 par niche", (r.bundle["index.html"] ?? "").includes("https://assets.gosite.digital/stock/"));
-  check("repli: bundle reste v7", (r.bundle["index.html"] ?? "").includes(ENGINE_MARKER));
+  check("repli: aucune URL R2/hotlink", !idx.includes("assets.gosite.digital") && !idx.includes("images.unsplash.com"));
+  check("repli: images SVG inline", idx.includes("data:image/svg+xml"));
+  check("repli: bundle reste v7", idx.includes(ENGINE_MARKER));
 }
 
-// ── Échec LLM → throw (le pipeline repart sur buildSiteBundle) ──────────────
+// ── Pack R2 téléchargé localement (extension webp, zéro hotlink) ────────────
+{
+  const packOnly = (async (url: string | URL) => {
+    if (!String(url).includes("assets.gosite.digital")) throw new Error("offline");
+    return new Response(new Uint8Array(20_000).fill(8), { status: 200, headers: { "content-type": "image/webp" } });
+  }) as unknown as typeof fetch;
+  const r = await buildSiteV7(sheet, 8, { slug: "pack-shop", llm: llmOk, fetchImpl: packOnly });
+  const idx = r.bundle["index.html"] ?? "";
+  check("pack: hero webp embarqué", Boolean(r.bundle["images/hero.webp"]));
+  check("pack: galerie webp embarquée", Object.keys(r.bundle).some((k) => /^images\/work-\d+\.webp$/.test(k)));
+  check("pack: HTML pointe le fichier local", idx.includes("https://pack-shop.gosite.digital/images/hero.webp"));
+  check("pack: aucune URL R2 dans le HTML", !idx.includes("assets.gosite.digital"));
+}
+
+// ── Téléchargement partiel : jamais d'URL héritée dans le HTML ─────────────
+{
+  const partiel = (async (url: string | URL) => {
+    if (String(url).includes("hero")) throw new Error("offline");
+    return new Response(new Uint8Array(20_000).fill(9), { status: 200, headers: { "content-type": "image/jpeg" } });
+  }) as unknown as typeof fetch;
+  const r = await buildSiteV7(
+    { ...sheet, HERO_IMAGE_URL: "https://images.unsplash.com/photo-hero" },
+    9,
+    { slug: "partial-shop", llm: llmOk, fetchImpl: partiel },
+  );
+  const idx = r.bundle["index.html"] ?? "";
+  check("partiel: ancienne URL hero absente", !idx.includes("images.unsplash.com"));
+  check("partiel: hero référencé dans le bundle", [...idx.matchAll(/<img[^>]+src="([^"]+)"/g)].every((m) => m[1].startsWith("data:") || Boolean(r.bundle[m[1].replace(/^https:\/\/[^/]+\//, "")])));
+}
+
+// ── Rafraîchissement sans LLM : spec conservé + images locales ──────────────
+{
+  const r = await renderRefreshedBundleV7(specFixture, sheet, 10, "refresh-shop", undefined, fetchImg);
+  const idx = r["index.html"] ?? "";
+  check("refresh: hero local", Boolean(r["images/hero.jpg"]));
+  check("refresh: galerie locale", Boolean(r["images/work-1.jpg"]));
+  check("refresh: zéro hotlink", !idx.includes("images.unsplash.com") && !idx.includes("assets.gosite.digital"));
+  check("refresh: marqueur v7", idx.includes(ENGINE_MARKER));
+}
+
+// ── Échec LLM → throw (le pipeline remet le lead en file, pas de v6) ───────
 {
   let rejected = false;
   try {

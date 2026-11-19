@@ -278,7 +278,10 @@ export function isStaleSiteBundle(bundle: Record<string, string> | null | undefi
   return !(html && conform(html));
 }
 
-/** Index de secours déterministe — utilisé quand Gemini échoue. Conforme v6 :
+/** @deprecated Moteur v6 — n'est PLUS appelé pour générer un site.
+ *  Conservé uniquement pour buildSiteBundle (compat/tests) : le pipeline
+ *  production utilise exclusivement le moteur SiteSpec (coder-engine.ts).
+ *  Index de secours déterministe — utilisé quand Gemini échoue. Conforme v6 :
  *  tokens, data-reveal, 3 dividers, barre mobile, form API, zéro hotlink,
  *  zéro fait inventé (rating omis si absent, section testimonials omise). */
 export function renderFallbackIndex(config: SiteConfig): string {

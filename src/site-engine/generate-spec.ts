@@ -57,6 +57,10 @@ BUSINESS MODEL :
 
 CONTENU :
 - Chaque headline doit être UNIQUE et spécifique au business (pas générique)
+- INTERDIT les accroches réutilisables du type "[Ville]'s finest …", "Leading …",
+  "Your trusted …" : la headline doit citer un bénéfice CONCRET + un élément
+  propre au client (nom, quartier, spécialité). Deux clients de la même niche
+  ne doivent partager AUCUNE phrase (hero, FAQ, meta, services).
 - Les FAQ doivent être des VRAIES questions qu'un client poserait pour CE business
 - Les témoignages doivent utiliser des prénoms culturellement appropriés à la ville/pays
 - Les services doivent correspondre à ce que fait RÉELLEMENT ce type de business

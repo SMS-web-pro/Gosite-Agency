@@ -302,6 +302,9 @@ export type BundleBuild = {
   todoList: string[];
 };
 
+/** @deprecated Moteur v6 (Gemini + gabarit) — remplacé en production par
+ *  buildSiteV7 (coder-engine.ts). Plus aucun appel depuis le pipeline : un
+ *  échec v7 remet le lead en file au lieu de publier un site au rabais. */
 export async function buildSiteBundle(
   sheet: Record<string, string>,
   prospectId: number,

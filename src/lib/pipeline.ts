@@ -9,7 +9,6 @@ import { ensureAgentsSeeded, markAgentRunEnd, markAgentRunStart } from "./agents
 import { scoutSearch, provisionReplacementKey } from "./serper";
 import { verifyEmail } from "./email-verify";
 import { buildClientSheet, enrichSheetFromRealData, validateSheet } from "./mapper";
-import { buildSiteBundle } from "./coder";
 import { isStaleSiteBundle } from "./bundle";
 import { deployToVercel, deploySiteBundle, linkDomain, slugifyId } from "./deploy";
 import { sendSalesEmail } from "./emailer";
@@ -437,37 +436,130 @@ export async function mapProspect(p: Prospect) {
 }
 
 // ─────────────────────────── 5. CODER ───────────────────────────
-// v7 (spec 2.7) : moteur SiteSpec en priorité — la fiche nourrit un SiteSpec
-// validé par Zod, le rendu HTML est 100% déterministe. Repli moteur v6
-// (Gemini → gabarit) si le LLM du spec échoue, pour ne jamais bloquer un lead.
+// v7 (spec 2.7) : SEUL moteur de génération — la fiche nourrit un SiteSpec
+// validé par Zod, le rendu HTML est 100% déterministe. Plus AUCUN repli vers
+// le gabarit v6 (renderFallbackIndex) : un échec LLM remet le lead en file au
+// tick suivant (failCount +3 max), au lieu de publier un site « null ».
 export async function buildProspectSite(p: Prospect) {
   await markAgentRunStart("coder");
   const sheet = p.clientData ?? buildClientSheet(p);
   const slug = await decideSlug(p);
-  let result: { html: string; bundle: Record<string, string>; engine: "site-engine" | "gemini" | "fallback"; todoList: string[] };
-  let spec: import("../site-engine/site-spec.schema").SiteSpec | null = null;
   try {
     const { buildSiteV7 } = await import("./coder-engine");
     const v7 = await buildSiteV7(sheet, p.id, { slug });
-    spec = v7.spec;
-    result = { html: v7.html, bundle: v7.bundle, engine: v7.engine, todoList: [] };
-  } catch (err) {
+    await updateWithSlug(p.id, slug, { siteHtml: v7.html, siteBundle: v7.bundle, siteSpec: v7.spec, stage: "site_built" });
+    await markAgentRunEnd("coder", true);
     await logActivity({
-      agentKey: "coder", action: "moteur_v7_repli",
-      message: `Moteur SiteSpec indisponible pour ${p.businessName} (${err instanceof Error ? err.message : err}) — repli moteur v6.`,
+      agentKey: "coder", action: "site_genere",
+      message: `Site généré pour ${p.businessName} (${(v7.html.length / 1024).toFixed(0)} Ko, ${Object.keys(v7.bundle).length} fichiers) — moteur SiteSpec.`,
+      level: "success", prospectId: p.id, meta: { engine: v7.engine, size: v7.html.length, bundleFiles: Object.keys(v7.bundle).length },
+    });
+    return { html: v7.html, bundle: v7.bundle, engine: v7.engine, todoList: [] as string[], slug };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await markAgentRunEnd("coder", false, msg);
+    await logActivity({
+      agentKey: "coder", action: "moteur_v7_echec",
+      message: `Aucun site généré pour ${p.businessName} — moteur SiteSpec en échec (${msg}). Lead conservé en file, AUCUN repli v6.`,
+      level: "error", prospectId: p.id,
+    });
+    throw new Error(`Moteur SiteSpec indisponible : ${msg}`);
+  }
+}
+
+/** Migration d'un site v6 déjà en ligne vers le moteur v7 (spec 2.7).
+ *  Ne touche NI au stage NI au cycle de vente (aucun email renvoyé) : le
+ *  bundle en production est simplement remplacé, domaine conservé. */
+export async function rebuildDeployedSiteV7(p: Prospect): Promise<{ ok: boolean; url?: string; error?: string }> {
+  if (!p.siteSlug || !p.deployedUrl) return { ok: false, error: "Site non déployé (slug/URL absents)" };
+  const sheet = p.clientData ?? buildClientSheet(p);
+  const base = p.domainUrl || p.deployedUrl;
+  try {
+    const { buildSiteV7 } = await import("./coder-engine");
+    const v7 = await buildSiteV7(sheet, p.id, {
+      slug: p.siteSlug,
+      baseUrl: base,
+      timeoutMs: 20_000,
+      deadlineMs: 26_000,
+    });
+    const { deploySiteBundle } = await import("./deploy");
+    const res = await deploySiteBundle(p.siteSlug, v7.bundle);
+    if (!res.ok) {
+      await logActivity({
+        agentKey: "coder", action: "site_migre_v7_echec",
+        message: `Migration v7 de ${p.businessName} : redéploiement échoué (${res.error ?? "?"}).`,
+        level: "warn", prospectId: p.id,
+      });
+      return { ok: false, error: res.error ?? "redéploiement échoué" };
+    }
+    await db.update(prospects).set({
+      siteSpec: v7.spec,
+      siteBundle: v7.bundle,
+      siteHtml: v7.html,
+      updatedAt: new Date(),
+    }).where(eq(prospects.id, p.id));
+    await logActivity({
+      agentKey: "coder", action: "site_migre_v7",
+      message: `Site de ${p.businessName} migré du gabarit v6 vers le moteur SiteSpec (${Object.keys(v7.bundle).length} fichiers) → ${base}.`,
+      level: "success", prospectId: p.id,
+    });
+    return { ok: true, url: base };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await logActivity({
+      agentKey: "coder", action: "site_migre_v7_echec",
+      message: `Migration v7 de ${p.businessName} impossible : ${msg}`,
       level: "warn", prospectId: p.id,
     });
-    result = await buildSiteBundle({ ...sheet, SLUG: slug }, p.id);
+    // Rotation : évite qu'un lead en échec bloque indéfiniment la file de
+    // migration (le plus ancien updatedAt repasse en dernier).
+    await db.update(prospects).set({ updatedAt: new Date() }).where(eq(prospects.id, p.id)).catch(() => undefined);
+    return { ok: false, error: msg };
   }
-  await updateWithSlug(p.id, slug, { siteHtml: result.html, siteBundle: result.bundle, siteSpec: spec, stage: "site_built" });
-  await markAgentRunEnd("coder", true);
-  const engineLabel = result.engine === "site-engine" ? "moteur SiteSpec" : result.engine === "gemini" ? "Gemini" : "fallback déterministe";
-  await logActivity({
-    agentKey: "coder", action: "site_genere",
-    message: `Site généré pour ${p.businessName} (${(result.html.length / 1024).toFixed(0)} Ko, ${Object.keys(result.bundle).length} fichiers) — ${engineLabel}.`,
-    level: "success", prospectId: p.id, meta: { engine: result.engine, size: result.html.length, bundleFiles: Object.keys(result.bundle).length },
-  });
-  return { html: result.html, bundle: result.bundle, engine: result.engine, todoList: result.todoList, slug };
+}
+
+/** Re-rendu d'un site v7 déjà en ligne sans rappeler le LLM : corrige les
+ *  bundles construits avant le correctif images (hotlinks Unsplash, hero manquant,
+ *  404 du pack R2). Spec, stage et cycle de vente inchangés. */
+export async function refreshDeployedSiteV7(p: Prospect): Promise<{ ok: boolean; url?: string; error?: string }> {
+  if (!p.siteSpec) return { ok: false, error: "siteSpec absent" };
+  if (!p.siteSlug || !p.deployedUrl) return { ok: false, error: "Site non déployé (slug/URL absents)" };
+  const sheet = p.clientData ?? buildClientSheet(p);
+  const base = p.domainUrl || p.deployedUrl;
+  try {
+    const { renderRefreshedBundleV7 } = await import("./coder-engine");
+    const bundle = await renderRefreshedBundleV7(p.siteSpec as Parameters<typeof renderRefreshedBundleV7>[0], sheet, p.id, p.siteSlug, base);
+    const { deploySiteBundle } = await import("./deploy");
+    const res = await deploySiteBundle(p.siteSlug, bundle);
+    if (!res.ok) {
+      await logActivity({
+        agentKey: "coder", action: "site_rafraichi_v7_echec",
+        message: `Rafraîchissement v7 de ${p.businessName} : redéploiement échoué (${res.error ?? "?"}).`,
+        level: "warn", prospectId: p.id,
+      });
+      return { ok: false, error: res.error ?? "redéploiement échoué" };
+    }
+    await db.update(prospects).set({
+      siteBundle: bundle,
+      siteHtml: bundle["index.html"] ?? p.siteHtml,
+      updatedAt: new Date(),
+    }).where(eq(prospects.id, p.id));
+    await logActivity({
+      agentKey: "coder", action: "site_rafraichi_v7",
+      message: `Images et bundle de ${p.businessName} rafraîchis (${Object.keys(bundle).length} fichiers, zéro hotlink) → ${base}.`,
+      level: "success", prospectId: p.id,
+    });
+    return { ok: true, url: base };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await logActivity({
+      agentKey: "coder", action: "site_rafraichi_v7_echec",
+      message: `Rafraîchissement v7 de ${p.businessName} impossible : ${msg}`,
+      level: "warn", prospectId: p.id,
+    });
+    await db.update(prospects).set({ updatedAt: new Date() }).where(eq(prospects.id, p.id)).catch(() => undefined);
+    return { ok: false, error: msg };
+  }
 }
 
 // ─────────────────────────── 6. DEPLOYER ───────────────────────────

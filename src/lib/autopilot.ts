@@ -5,7 +5,7 @@
 
 import { db } from "@/db";
 import { agents, activities, inboundEmails, prospects, scoutSchedules, settings, type Agent } from "@/db/schema";
-import { and, asc, desc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { ensureAgentsSeeded } from "./agents";
 import { getSetting } from "./settings";
@@ -13,7 +13,8 @@ import { logActivity } from "./activity";
 import { notifyTelegram } from "./telegram";
 import {
   runScoutMission, validateProspect, verifyProspectEmail, mapProspect,
-  buildProspectSite, deployProspectSite, contactProspect,
+  buildProspectSite, deployProspectSite, contactProspect, rebuildDeployedSiteV7,
+  refreshDeployedSiteV7,
 } from "./pipeline";
 
 export type TickSummary = {
@@ -27,6 +28,7 @@ export type TickSummary = {
   skipped?: string;
   deadlineReached?: boolean;
   capped?: boolean;
+  migrated?: boolean;
 };
 
 const TICK_LOCK_KEY = "TICK_LOCK";
@@ -131,12 +133,12 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
 /** Trace le résultat de chaque tick utile dans activities (spec 1.5). */
 async function logTickSummary(summary: TickSummary): Promise<void> {
   const moved = Object.values(summary.advanced).reduce((a, b) => a + b, 0);
-  if (moved === 0 && summary.missionsRun === 0 && summary.errors.length === 0) return;
+  if (moved === 0 && summary.missionsRun === 0 && summary.errors.length === 0 && !summary.migrated) return;
   const detail = Object.entries(summary.advanced).map(([stage, n]) => `${stage}:${n}`).join(" ") || "aucune étape";
   await logActivity({
     agentKey: "autopilot", action: "tick_termine",
     message: `Tick : ${summary.processed} lead(s) traité(s) · ${detail} · missions ${summary.missionsRun}` +
-      `${summary.capped ? " · plafond 5 atteint" : ""}${summary.deadlineReached ? " · deadline 45s" : ""}` +
+      `${summary.migrated ? " · migration v7" : ""}${summary.capped ? " · plafond 5 atteint" : ""}${summary.deadlineReached ? " · deadline 45s" : ""}` +
       `${summary.errors.length ? ` · ${summary.errors.length} erreur(s)` : ""}`.slice(0, 300),
     level: summary.errors.length ? "warn" : "success",
   });
@@ -194,6 +196,50 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   await db.update(prospects)
     .set({ stage: "deployed", updatedAt: new Date() })
     .where(and(eq(prospects.stage, "contacting"), lt(prospects.updatedAt, new Date(Date.now() - 15 * 60_000))));
+
+  // ── 0b) Migration des sites v6 encore en ligne (spec 2.7) ──
+  // Les leads déjà "contacted" ne repassent JAMAIS par le pipeline : sans ce
+  // rattrapage, leur ancien site (renderFallbackIndex) reste en prod à vie.
+  // Un seul par tick, stage/URL/emails inchangés — seul le bundle est remplacé.
+  if (Date.now() < deadline - 25_000) {
+    try {
+      const legacy = await db
+        .select()
+        .from(prospects)
+        .where(and(isNotNull(prospects.deployedUrl), isNull(prospects.siteSpec)))
+        .orderBy(asc(prospects.updatedAt))
+        .limit(1);
+      if (legacy[0]) {
+        const r = await rebuildDeployedSiteV7(legacy[0]);
+        summary.migrated = r.ok;
+        if (!r.ok) summary.errors.push(`migration_v7#${legacy[0].id}: ${r.error}`);
+      } else {
+        // Aucun v6 : on rafraîchit un site v7 dont le bundle contient encore un
+        // hotlink ou n'a pas d'image hero/about locale (bundles d'avant correctif).
+        const stale = await db
+          .select()
+          .from(prospects)
+          .where(and(
+            isNotNull(prospects.deployedUrl),
+            isNotNull(prospects.siteSpec),
+            sql`(${prospects.siteHtml} like ${"%images.unsplash.com%"}
+              or ${prospects.siteHtml} like ${"%assets.gosite.digital%"}
+              or ${prospects.siteBundle}::text not like ${"%images/hero.%"}
+              or ${prospects.siteBundle}::text not like ${"%images/about.%"}
+              or ${prospects.siteBundle}::text not like ${"%images/work-1.%"} )`,
+          ))
+          .orderBy(asc(prospects.updatedAt))
+          .limit(1);
+        if (stale[0]) {
+          const r = await refreshDeployedSiteV7(stale[0]);
+          summary.migrated = r.ok;
+          if (!r.ok) summary.errors.push(`refresh_v7#${stale[0].id}: ${r.error}`);
+        }
+      }
+    } catch (err) {
+      summary.errors.push(`migration_v7: ${err instanceof Error ? err.message : "?"}`);
+    }
+  }
 
   // ── 1) Missions planifiées ──
   if (await agentUsable("prospector", cache)) {
@@ -420,7 +466,7 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   }
 
   const moved = Object.values(summary.advanced).reduce((a, b) => a + b, 0);
-  if (moved > 0 || summary.missionsRun > 0) {
+  if (moved > 0 || summary.missionsRun > 0 || summary.migrated) {
     await notifyTelegram(
       `🤖 <b>Auto-pilote — cycle terminé</b>\n` +
         `Missions : ${summary.missionsRun} · Leads avancés : ${moved}` +

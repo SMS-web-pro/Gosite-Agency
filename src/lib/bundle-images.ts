@@ -3,7 +3,7 @@
 // Échec d'un slot → null : le caller passe à la réserve suivante du pool
 // (jamais d'URL distante substituée dans le HTML).
 
-export type ImageSlot = { slot: "hero" | "about" | "gallery"; url: string };
+export type ImageSlot = { slot: "hero" | "about" | "gallery"; url: string; ext?: "jpg" | "webp" };
 
 export type LocalImages = {
   files: Record<string, string>; // nom de fichier → base64 (sans préfixe data:)
@@ -77,10 +77,12 @@ export async function downloadImages(
   // Téléchargements en paquets de 3 (pool = CDN Unsplash : séquentiel serait lent).
   // Une même URL n'est JAMAIS téléchargée 2 fois : la 2e occurrence réutilise
   // les bytes (réserve du pool = souvent l'héros/le about).
-  const jobs: { url: string; kind: "hero" | "about" | "gallery"; idx: number }[] = [];
-  if (heroUrl) jobs.push({ url: heroUrl, kind: "hero", idx: 0 });
-  if (aboutUrl) jobs.push({ url: aboutUrl, kind: "about", idx: 0 });
-  galleryUrls.forEach((u, i) => jobs.push({ url: u, kind: "gallery", idx: i }));
+  const extFor = new Map<string, "jpg" | "webp">();
+  for (const s of slots) if (s.ext) extFor.set(s.url, s.ext);
+  const jobs: { url: string; kind: "hero" | "about" | "gallery"; idx: number; ext?: "jpg" | "webp" }[] = [];
+  if (heroUrl) jobs.push({ url: heroUrl, kind: "hero", idx: 0, ext: extFor.get(heroUrl) });
+  if (aboutUrl) jobs.push({ url: aboutUrl, kind: "about", idx: 0, ext: extFor.get(aboutUrl) });
+  galleryUrls.forEach((u, i) => jobs.push({ url: u, kind: "gallery", idx: i, ext: extFor.get(u) }));
 
   // Téléchargements en paquets de 3 (pool = CDN Unsplash : séquentiel serait lent).
   // Une même URL n'est JAMAIS téléchargée 2 fois : la 2e occurrence réutilise
@@ -94,10 +96,11 @@ export async function downloadImages(
     batch.forEach((j) => {
       const buf = cache.get(j.url);
       if (!buf) return;
+      const ext = j.ext ?? "jpg";
       let path: string;
-      if (j.kind === "hero") path = "images/hero.jpg";
-      else if (j.kind === "about") path = "images/about.jpg";
-      else path = `images/work-${gallery.length + 1}.jpg`;
+      if (j.kind === "hero") path = `images/hero.${ext}`;
+      else if (j.kind === "about") path = `images/about.${ext}`;
+      else path = `images/work-${gallery.length + 1}.${ext}`;
       files[path] = buf.toString("base64");
       if (j.kind === "hero") hero = path;
       else if (j.kind === "about") about = path;

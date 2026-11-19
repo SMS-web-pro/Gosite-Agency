@@ -120,4 +120,19 @@ const okRes = (bytes: ArrayBuffer) => new Response(bytes, { status: 200, headers
   check("reserve: 6 fichiers work", Object.keys(r.files).filter((k) => k.startsWith("images/work-")).length === 6);
 }
 
+// 5. Extension webp (pack R2) : chemin .webp, pas .jpg
+{
+  const fetchImpl = async () => okRes(JPEG_15K);
+  const r = await downloadImages(
+    [
+      { slot: "hero", url: "https://assets.gosite.digital/stock/barber/hero.webp", ext: "webp" },
+      { slot: "gallery", url: "https://assets.gosite.digital/stock/barber/cut-1.webp", ext: "webp" },
+    ],
+    fetchImpl as typeof fetch
+  );
+  check("webp: hero chemin", r.hero === "images/hero.webp");
+  check("webp: gallery chemin", r.gallery[0] === "images/work-1.webp");
+  check("webp: fichier présent", Boolean(r.files["images/hero.webp"]));
+}
+
 process.exit(fail ? 1 : 0);
