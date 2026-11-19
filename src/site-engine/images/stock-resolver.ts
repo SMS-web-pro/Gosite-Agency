@@ -1,7 +1,7 @@
-// Couche 3 (spec 2.6) : images libres de droits par niche, hébergées sur
-// assets.gosite.digital (Cloudflare R2). Chaque pack fournit hero, about,
-// 4 visuels de galerie et une image OG — aucune dépendance à un hotlink
-// Unsplash/Pexels au runtime des sites générés.
+// Couche 3 (spec 2.6) : images libres de droits par niche, servies depuis
+// nos propres assets statiques (public/stock, déployés avec le site). Chaque
+// pack fournit hero, about, 4 visuels de galerie et une image OG — aucune
+// dépendance à Unsplash/Pexels au runtime des sites générés.
 
 import type { ClientSheet } from "../types";
 
@@ -12,7 +12,7 @@ export type NicheImagePack = {
   og: string;
 };
 
-export const STOCK_BASE = "https://assets.gosite.digital/stock";
+export const STOCK_BASE = "https://gosite.digital/stock";
 
 function pack(slug: string, aboutName = "about", galleryNames = ["work-1", "work-2", "work-3", "work-4"]): NicheImagePack {
   return {

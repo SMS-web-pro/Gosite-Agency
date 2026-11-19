@@ -14,7 +14,7 @@ import { notifyTelegram } from "./telegram";
 import {
   runScoutMission, validateProspect, verifyProspectEmail, mapProspect,
   buildProspectSite, deployProspectSite, contactProspect, rebuildDeployedSiteV7,
-  refreshDeployedSiteV7,
+  refreshDeployedSiteV7, regenerateDeployedSiteV7,
 } from "./pipeline";
 
 export type TickSummary = {
@@ -29,6 +29,7 @@ export type TickSummary = {
   deadlineReached?: boolean;
   capped?: boolean;
   migrated?: boolean;
+  deduped?: boolean;
 };
 
 const TICK_LOCK_KEY = "TICK_LOCK";
@@ -133,12 +134,12 @@ export async function runAutopilotTick(opts: { force?: boolean } = {}): Promise<
 /** Trace le résultat de chaque tick utile dans activities (spec 1.5). */
 async function logTickSummary(summary: TickSummary): Promise<void> {
   const moved = Object.values(summary.advanced).reduce((a, b) => a + b, 0);
-  if (moved === 0 && summary.missionsRun === 0 && summary.errors.length === 0 && !summary.migrated) return;
+  if (moved === 0 && summary.missionsRun === 0 && summary.errors.length === 0 && !summary.migrated && !summary.deduped) return;
   const detail = Object.entries(summary.advanced).map(([stage, n]) => `${stage}:${n}`).join(" ") || "aucune étape";
   await logActivity({
     agentKey: "autopilot", action: "tick_termine",
     message: `Tick : ${summary.processed} lead(s) traité(s) · ${detail} · missions ${summary.missionsRun}` +
-      `${summary.migrated ? " · migration v7" : ""}${summary.capped ? " · plafond 5 atteint" : ""}${summary.deadlineReached ? " · deadline 45s" : ""}` +
+      `${summary.migrated ? " · migration/refresh v7" : ""}${summary.deduped ? " · dédup éditoriale" : ""}${summary.capped ? " · plafond 5 atteint" : ""}${summary.deadlineReached ? " · deadline 45s" : ""}` +
       `${summary.errors.length ? ` · ${summary.errors.length} erreur(s)` : ""}`.slice(0, 300),
     level: summary.errors.length ? "warn" : "success",
   });
@@ -238,6 +239,28 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
           const r = await refreshDeployedSiteV7(stale[0]);
           summary.migrated = r.ok;
           if (!r.ok) summary.errors.push(`refresh_v7#${stale[0].id}: ${r.error}`);
+        } else {
+          // Deux sites publiés avec exactement la même accroche → on régénère
+          // le second avec la consigne anti-clone (aucun email renvoyé).
+          const pubs = await db.select().from(prospects)
+            .where(and(isNotNull(prospects.deployedUrl), isNotNull(prospects.siteSpec)))
+            .orderBy(asc(prospects.updatedAt)).limit(60);
+          const norm = (s: unknown) => String(s ?? "").normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+          const seen = new Set<string>();
+          let dup: (typeof pubs)[number] | null = null;
+          for (const row of pubs) {
+            const spec = (row.siteSpec ?? {}) as { homeSections?: Array<{ type?: string; headline?: string }> };
+            const h = norm(spec.homeSections?.find((x) => x.type === "hero")?.headline);
+            if (!h) continue;
+            if (seen.has(h)) { dup = row; break; }
+            seen.add(h);
+          }
+          if (dup) {
+            const r = await regenerateDeployedSiteV7(dup);
+            summary.deduped = r.ok;
+            if (!r.ok) summary.errors.push(`dedupe_v7#${dup.id}: ${r.error}`);
+          }
         }
       }
     } catch (err) {
@@ -470,7 +493,7 @@ async function runTickBody(summary: TickSummary): Promise<TickSummary> {
   }
 
   const moved = Object.values(summary.advanced).reduce((a, b) => a + b, 0);
-  if (moved > 0 || summary.missionsRun > 0 || summary.migrated) {
+  if (moved > 0 || summary.missionsRun > 0 || summary.migrated || summary.deduped) {
     await notifyTelegram(
       `🤖 <b>Auto-pilote — cycle terminé</b>\n` +
         `Missions : ${summary.missionsRun} · Leads avancés : ${moved}` +

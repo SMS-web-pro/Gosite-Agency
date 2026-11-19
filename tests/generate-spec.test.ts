@@ -28,6 +28,18 @@ const bad = JSON.stringify({
   check("spec retournée = fixture", out.metaTitle === specFixture.metaTitle && out.homeSections.length === specFixture.homeSections.length && out.servicePages.length === 3);
 }
 
+// 1b) Anti-clone : les accroches déjà publiées sont injectées dans le prompt.
+{
+  const calls: Call[] = [];
+  await generateSiteSpec(specSheet, {
+    llm: async (p) => { calls.push(p); return good; },
+    avoid: ["Chicago's finest barber experience", "Do I need an appointment?"],
+  });
+  check("anti-clone: bloc interdit présent", calls[0]?.user.includes("CONTENU DÉJÀ PUBLIÉ — INTERDIT DE RÉUTILISER"));
+  check("anti-clone: headline rappelée", calls[0]?.user.includes("Chicago's finest barber experience"));
+  check("anti-clone: FAQ rappelée", calls[0]?.user.includes("Do I need an appointment?"));
+}
+
 // 2) JSON entouré de markdown (fences) : le parse loose prend le relais.
 {
   const out = await generateSiteSpec(specSheet, {

@@ -102,7 +102,13 @@ function buildSystem(): string {
   return `${SYSTEM_PROMPT}\n\nSCHÉMA JSON SITESPEC (forme EXACTE attendue, JSON Schema) :\n${SCHEMA_JSON}`;
 }
 
-function buildUserPrompt(sheet: ClientSheet): string {
+function buildUserPrompt(sheet: ClientSheet, avoid: string[] = []): string {
+  const antiClone = avoid.length
+    ? `\n\nCONTENU DÉJÀ PUBLIÉ — INTERDIT DE RÉUTILISER (même formulation) :\n${avoid
+        .slice(0, 60)
+        .map((s) => `- ${s}`)
+        .join("\n")}\nÉcris des accroches, une metaTitle et des questions FAQ inédites pour CE client.`
+    : "";
   return `
 FICHE CLIENT :
 - Nom du business : ${sheet.BUSINESS_NAME}
@@ -127,7 +133,7 @@ FICHE CLIENT :
 - Couleur accent existante : ${sheet.ACCENT_COLOR || "à proposer"}
 - Style demandé : ${sheet.STYLE || "moderne et professionnel"}
 
-Génère le SiteSpec JSON complet pour ce client.`.trim();
+Génère le SiteSpec JSON complet pour ce client.${antiClone}`.trim();
 }
 
 function parseSpecJson(raw: string): unknown {
@@ -145,10 +151,10 @@ function issuesSummary(issues: z.ZodError["issues"]): string {
     .join("\n");
 }
 
-export async function generateSiteSpec(sheet: ClientSheet, opts?: { llm?: SpecLlmCall }): Promise<SiteSpec> {
+export async function generateSiteSpec(sheet: ClientSheet, opts?: { llm?: SpecLlmCall; avoid?: string[] }): Promise<SiteSpec> {
   const llm = opts?.llm ?? defaultLlm;
   const system = buildSystem();
-  const user = buildUserPrompt(sheet);
+  const user = buildUserPrompt(sheet, opts?.avoid);
 
   const raw = await llm({ system, user, maxTokens: 12000, temperature: 0.7, jsonMode: true });
   if (!raw) throw new Error("[coder] SiteSpec : LLM indisponible (Gemini non configuré ou en échec)");

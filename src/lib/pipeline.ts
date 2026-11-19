@@ -3,7 +3,7 @@
 
 import { db } from "@/db";
 import { prospects, emails, activities, type Prospect } from "@/db/schema";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import { logActivity } from "./activity";
 import { ensureAgentsSeeded, markAgentRunEnd, markAgentRunStart } from "./agents";
 import { scoutSearch, provisionReplacementKey } from "./serper";
@@ -440,13 +440,59 @@ export async function mapProspect(p: Prospect) {
 // validé par Zod, le rendu HTML est 100% déterministe. Plus AUCUN repli vers
 // le gabarit v6 (renderFallbackIndex) : un échec LLM remet le lead en file au
 // tick suivant (failCount +3 max), au lieu de publier un site « null ».
+
+type EditorialSpec = {
+  metaTitle?: string;
+  homeSections?: Array<{ type?: string; headline?: string; items?: Array<{ question?: string }> }>;
+};
+const normEditorial = (s: unknown): string =>
+  String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/** Accroches/meta/FAQ des derniers sites publiés : interdites de réutilisation
+ *  par le LLM. Évite les clones exacts entre deux leads de la même niche. */
+async function recentEditorialAvoid(): Promise<string[]> {
+  const rows = await db.select({ siteSpec: prospects.siteSpec }).from(prospects)
+    .where(isNotNull(prospects.siteSpec)).orderBy(desc(prospects.updatedAt)).limit(25);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (v: unknown) => {
+    const t = String(v ?? "").trim();
+    if (t.length < 8 || seen.has(normEditorial(t))) return;
+    seen.add(normEditorial(t)); out.push(t);
+  };
+  for (const r of rows) {
+    const s = (r.siteSpec ?? {}) as EditorialSpec;
+    add(s.homeSections?.find((x) => x.type === "hero")?.headline);
+    add(s.metaTitle);
+    for (const sec of s.homeSections ?? []) if (sec.type === "faq") for (const f of sec.items ?? []) add(f.question);
+  }
+  return out.slice(0, 60);
+}
+
+function editorialCollisions(spec: unknown, avoid: string[]): string[] {
+  const s = (spec ?? {}) as EditorialSpec;
+  const forbidden = new Set(avoid.map(normEditorial));
+  const own = [s.homeSections?.find((x) => x.type === "hero")?.headline, s.metaTitle];
+  return own.filter((v): v is string => Boolean(v) && forbidden.has(normEditorial(v)));
+}
+
 export async function buildProspectSite(p: Prospect) {
   await markAgentRunStart("coder");
   const sheet = p.clientData ?? buildClientSheet(p);
   const slug = await decideSlug(p);
   try {
     const { buildSiteV7 } = await import("./coder-engine");
-    const v7 = await buildSiteV7(sheet, p.id, { slug });
+    const avoid = await recentEditorialAvoid();
+    let v7 = await buildSiteV7(sheet, p.id, { slug, avoid });
+    const collisions = editorialCollisions(v7.spec, avoid);
+    if (collisions.length) {
+      await logActivity({
+        agentKey: "coder", action: "doublon_editorial",
+        message: `Accroche/meta déjà publiée pour ${p.businessName} — régénération avec consigne anti-clone : ${collisions.join(" | ")}`.slice(0, 300),
+        level: "warn", prospectId: p.id,
+      });
+      v7 = await buildSiteV7(sheet, p.id, { slug, avoid: [...avoid, ...collisions] });
+    }
     await updateWithSlug(p.id, slug, { siteHtml: v7.html, siteBundle: v7.bundle, siteSpec: v7.spec, stage: "site_built" });
     await markAgentRunEnd("coder", true);
     await logActivity({
@@ -555,6 +601,61 @@ export async function refreshDeployedSiteV7(p: Prospect): Promise<{ ok: boolean;
     await logActivity({
       agentKey: "coder", action: "site_rafraichi_v7_echec",
       message: `Rafraîchissement v7 de ${p.businessName} impossible : ${msg}`,
+      level: "warn", prospectId: p.id,
+    });
+    await db.update(prospects).set({ updatedAt: new Date() }).where(eq(prospects.id, p.id)).catch(() => undefined);
+    return { ok: false, error: msg };
+  }
+}
+
+/** Régénère le contenu d'un site v7 déjà en ligne (même slug/domaine) avec une
+ *  consigne anti-clone. Aucun email, aucun changement de stage. */
+export async function regenerateDeployedSiteV7(p: Prospect): Promise<{ ok: boolean; url?: string; error?: string }> {
+  if (!p.siteSlug || !p.deployedUrl) return { ok: false, error: "Site non déployé (slug/URL absents)" };
+  const sheet = p.clientData ?? buildClientSheet(p);
+  const base = p.domainUrl || p.deployedUrl;
+  try {
+    const { buildSiteV7 } = await import("./coder-engine");
+    const avoid = await recentEditorialAvoid();
+    const build = () => buildSiteV7(sheet, p.id, {
+      slug: p.siteSlug!, baseUrl: base, avoid, timeoutMs: 20_000, deadlineMs: 26_000,
+    });
+    let v7 = await build();
+    const collisions = editorialCollisions(v7.spec, avoid);
+    if (collisions.length) {
+      avoid.push(...collisions);
+      v7 = await build();
+      if (editorialCollisions(v7.spec, avoid).length) {
+        throw new Error(`doublon éditorial persistant : ${collisions.join(" | ")}`);
+      }
+    }
+    const { deploySiteBundle } = await import("./deploy");
+    const res = await deploySiteBundle(p.siteSlug, v7.bundle);
+    if (!res.ok) {
+      await logActivity({
+        agentKey: "coder", action: "site_regenere_v7_echec",
+        message: `Régénération anti-clone de ${p.businessName} : redéploiement échoué (${res.error ?? "?"}).`,
+        level: "warn", prospectId: p.id,
+      });
+      return { ok: false, error: res.error ?? "redéploiement échoué" };
+    }
+    await db.update(prospects).set({
+      siteSpec: v7.spec,
+      siteBundle: v7.bundle,
+      siteHtml: v7.html,
+      updatedAt: new Date(),
+    }).where(eq(prospects.id, p.id));
+    await logActivity({
+      agentKey: "coder", action: "site_regenere_v7",
+      message: `Contenu de ${p.businessName} régénéré (anti-clone, ${Object.keys(v7.bundle).length} fichiers) → ${base}.`,
+      level: "success", prospectId: p.id,
+    });
+    return { ok: true, url: base };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    await logActivity({
+      agentKey: "coder", action: "site_regenere_v7_echec",
+      message: `Régénération anti-clone de ${p.businessName} impossible : ${msg}`,
       level: "warn", prospectId: p.id,
     });
     await db.update(prospects).set({ updatedAt: new Date() }).where(eq(prospects.id, p.id)).catch(() => undefined);

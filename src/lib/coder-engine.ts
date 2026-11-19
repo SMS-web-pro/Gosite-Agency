@@ -42,6 +42,8 @@ export type EngineBuildOpts = {
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
   deadlineMs?: number;
+  /** Accroches/meta/FAQ déjà publiées à ne pas réutiliser (anti-clone). */
+  avoid?: string[];
 };
 
 /** Fiche du moteur : domaine absolu, endpoint formulaire, images locales
@@ -253,7 +255,7 @@ export async function buildSiteV7(
         timeoutMs: opts.timeoutMs ?? 40_000,
         deadlineMs: opts.deadlineMs ?? 48_000,
       }));
-  const spec = await generateSiteSpec(engineSheet, { llm });
+  const spec = await generateSiteSpec(engineSheet, { llm, avoid: opts.avoid });
 
   // 3. Rendu déterministe + images locales (base64) réattachées au bundle.
   const bundle: Record<string, string> = { ...renderFullSite(spec, engineSheet), ...(imgs.files ?? {}) };

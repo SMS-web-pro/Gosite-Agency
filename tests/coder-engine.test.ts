@@ -111,7 +111,7 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   const r = await buildSiteV7(sheet, 7, { slug: "fallback-shop", llm: llmOk, fetchImpl: noImg });
   const idx = r.bundle["index.html"] ?? "";
   check("repli: aucun fichier images/", Object.keys(r.bundle).every((k) => !k.startsWith("images/")));
-  check("repli: aucune URL R2/hotlink", !idx.includes("assets.gosite.digital") && !idx.includes("images.unsplash.com"));
+  check("repli: aucune URL pack/hotlink", !idx.includes("gosite.digital/stock") && !idx.includes("images.unsplash.com"));
   check("repli: images SVG inline", idx.includes("data:image/svg+xml"));
   check("repli: bundle reste v7", idx.includes(ENGINE_MARKER));
 }
@@ -119,7 +119,7 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
 // ── Pack R2 téléchargé localement (extension webp, zéro hotlink) ────────────
 {
   const packOnly = (async (url: string | URL) => {
-    if (!String(url).includes("assets.gosite.digital")) throw new Error("offline");
+    if (!String(url).includes("gosite.digital/stock")) throw new Error("offline");
     return new Response(new Uint8Array(20_000).fill(8), { status: 200, headers: { "content-type": "image/webp" } });
   }) as unknown as typeof fetch;
   const r = await buildSiteV7(sheet, 8, { slug: "pack-shop", llm: llmOk, fetchImpl: packOnly });
@@ -127,7 +127,7 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   check("pack: hero webp embarqué", Boolean(r.bundle["images/hero.webp"]));
   check("pack: galerie webp embarquée", Object.keys(r.bundle).some((k) => /^images\/work-\d+\.webp$/.test(k)));
   check("pack: HTML pointe le fichier local", idx.includes("https://pack-shop.gosite.digital/images/hero.webp"));
-  check("pack: aucune URL R2 dans le HTML", !idx.includes("assets.gosite.digital"));
+  check("pack: aucune URL pack dans le HTML", !idx.includes("gosite.digital/stock"));
 }
 
 // ── Téléchargement partiel : jamais d'URL héritée dans le HTML ─────────────
@@ -168,7 +168,7 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   const idx = r["index.html"] ?? "";
   check("refresh: hero local", Boolean(r["images/hero.jpg"]));
   check("refresh: galerie locale", Boolean(r["images/work-1.jpg"]));
-  check("refresh: zéro hotlink", !idx.includes("images.unsplash.com") && !idx.includes("assets.gosite.digital"));
+  check("refresh: zéro hotlink", !idx.includes("images.unsplash.com") && !idx.includes("gosite.digital/stock"));
   check("refresh: marqueur v7", idx.includes(ENGINE_MARKER));
 }
 

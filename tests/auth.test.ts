@@ -22,7 +22,12 @@ async function main() {
   check("format: 3 parties v1", /^v1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token));
 
   // signature modifiée → null
-  const bad = token.replace(/\.$/, "").replace(/.$/, "X") + (token.endsWith("X") ? "Y" : "X") === token ? token + "x" : token.slice(0, -1) + (token.endsWith("X") ? "Y" : "X");
+  // Corrompt un caractère AU MILIEU de la signature : le dernier caractère
+  // base64url porte des bits de padding parfois ignorés au décodage (flaky).
+  const sigParts = token.split(".");
+  const sig = sigParts[2];
+  const mid = Math.floor(sig.length / 2);
+  const bad = `${sigParts[0]}.${sigParts[1]}.${sig.slice(0, mid)}${sig[mid] === "A" ? "B" : "A"}${sig.slice(mid + 1)}`;
   check("tamper: signature corrompue → null", (await verifySession(bad)) === null);
 
   // payload modifié → null
