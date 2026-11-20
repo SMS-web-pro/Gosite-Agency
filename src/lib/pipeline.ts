@@ -453,20 +453,22 @@ const normEditorial = (s: unknown): string =>
 async function recentEditorialAvoid(): Promise<string[]> {
   const rows = await db.select({ siteSpec: prospects.siteSpec }).from(prospects)
     .where(isNotNull(prospects.siteSpec)).orderBy(desc(prospects.updatedAt)).limit(25);
-  const out: string[] = [];
+  const headlines: string[] = [], metas: string[] = [], faqs: string[] = [];
   const seen = new Set<string>();
-  const add = (v: unknown) => {
+  const add = (bucket: string[], v: unknown) => {
     const t = String(v ?? "").trim();
     if (t.length < 8 || seen.has(normEditorial(t))) return;
-    seen.add(normEditorial(t)); out.push(t);
+    seen.add(normEditorial(t)); bucket.push(t);
   };
   for (const r of rows) {
     const s = (r.siteSpec ?? {}) as EditorialSpec;
-    add(s.homeSections?.find((x) => x.type === "hero")?.headline);
-    add(s.metaTitle);
-    for (const sec of s.homeSections ?? []) if (sec.type === "faq") for (const f of sec.items ?? []) add(f.question);
+    add(headlines, s.homeSections?.find((x) => x.type === "hero")?.headline);
+    add(metas, s.metaTitle);
+    for (const sec of s.homeSections ?? []) if (sec.type === "faq") for (const f of sec.items ?? []) add(faqs, f.question);
   }
-  return out.slice(0, 60);
+  // Large échantillon : les 25 derniers headlines/metas + 60 questions FAQ,
+  // pour que le LLM ne réutilise pas les formulations des sites récents.
+  return [...headlines.slice(0, 25), ...metas.slice(0, 25), ...faqs.slice(0, 60)];
 }
 
 function editorialCollisions(spec: unknown, avoid: string[]): string[] {

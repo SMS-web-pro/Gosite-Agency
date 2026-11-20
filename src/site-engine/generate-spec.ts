@@ -105,7 +105,7 @@ function buildSystem(): string {
 function buildUserPrompt(sheet: ClientSheet, avoid: string[] = []): string {
   const antiClone = avoid.length
     ? `\n\nCONTENU DÉJÀ PUBLIÉ — INTERDIT DE RÉUTILISER (même formulation) :\n${avoid
-        .slice(0, 60)
+        .slice(0, 120)
         .map((s) => `- ${s}`)
         .join("\n")}\nÉcris des accroches, une metaTitle et des questions FAQ inédites pour CE client.`
     : "";
