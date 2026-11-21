@@ -313,6 +313,7 @@ const trust = {
 
   check("base css: reset", BASE_CSS.includes("box-sizing:border-box"));
   check("base css: reveal no-js safe", BASE_CSS.includes("html.has-js .reveal"));
+  check("base css: ancres sous header fixe", BASE_CSS.includes("scroll-margin-top:84px"));
   check("base css: boutons", BASE_CSS.includes(".btn-accent") && BASE_CSS.includes(".btn-ghost"));
   check("components css: header", COMPONENTS_CSS.includes(".site-header"));
   check("components css: heroes", COMPONENTS_CSS.includes(".hero-fullwidth") && COMPONENTS_CSS.includes(".hero-centered"));

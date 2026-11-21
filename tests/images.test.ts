@@ -43,9 +43,9 @@ ok("pas de doublon", new Set(all).size === all.length, all.join(","));
 const small = pickSeededImages(["a", "b", "c", "d"], "s", 6);
 ok("galerie pool court complete", small.gallery.length === 6);
 
-// 6. Pools de niches : >= la 4 URLs, w=1920 (photos complettes full HD)
+// 6. Pools de niches : >= 6 URLs distinctes, w=1920 (photos complètes full HD)
 for (const n of [...NICHES, DEFAULT_NICHE]) {
-  ok(`pool ${n.label}`, (n.imagePool?.length ?? 0) >= 4);
+  ok(`pool ${n.label}`, new Set(n.imagePool ?? []).size >= 6);
   const badUrls = (n.imagePool || []).filter((u) => !u.includes("images.unsplash.com/photo-") || !u.includes("w=1920"));
   ok(`pool ${n.label} URLs full HD`, badUrls.length === 0, badUrls.join(" | "));
 }

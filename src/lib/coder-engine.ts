@@ -167,7 +167,7 @@ async function prepareImages(sheet: ClientSheet, fetchImpl?: typeof fetch): Prom
   const niche = findNiche(sheet.BUSINESS_TYPE ?? "");
   const pool = niche.imagePool.length ? niche.imagePool : [niche.heroImage, niche.aboutImage];
   const picked = pickSeededImages(pool, `${sheet.BUSINESS_NAME ?? ""}|${sheet.CITY ?? ""}`, 6);
-  const seen = new Set<string>();
+  const seen = new Set<string>([picked.hero, picked.about]);
   const slots: ImageSlot[] = [
     { slot: "hero", url: picked.hero },
     { slot: "about", url: picked.about },

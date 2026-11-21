@@ -22,6 +22,7 @@ button{font:inherit;color:inherit}
 .container{width:100%;max-width:var(--container-max);margin-inline:auto;padding-inline:clamp(1rem,4vw,2rem)}
 .container-narrow{max-width:var(--container-narrow)}
 .section{padding:var(--section-padding)}
+section[id]{scroll-margin-top:84px}
 .section-head{max-width:720px;margin:0 auto var(--space-md);text-align:center}
 .section-sub{color:color-mix(in srgb,var(--color-text) 70%,transparent);font-size:1.05rem;max-width:60ch;margin-inline:auto}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}

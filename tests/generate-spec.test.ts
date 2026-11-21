@@ -63,6 +63,23 @@ const bad = JSON.stringify({
   check("retry: spec valide retournée", out.metaTitle === specFixture.metaTitle);
 }
 
+// 3b) Section contact absente : la validation métier déclenche un retry même
+//     si le JSON est valide pour Zod (un site sans formulaire est inutilisable).
+{
+  const faq = specFixture.homeSections.find((s) => s.type === "faq")!;
+  const noContact = JSON.stringify({
+    ...specFixture,
+    homeSections: [...specFixture.homeSections.filter((s) => s.type !== "contact"), faq],
+  });
+  const calls: Call[] = [];
+  const out = await generateSiteSpec(specSheet, {
+    llm: async (p) => { calls.push(p); return calls.length === 1 ? noContact : good; },
+  });
+  check("contact manquant: retry déclenché", calls.length === 2);
+  check("contact manquant: consigne dans le prompt", calls[1]?.user.includes("sections obligatoires manquantes (contact)"));
+  check("contact manquant: spec corrigée retournée", out.homeSections.some((s) => s.type === "contact"));
+}
+
 // 4) Toujours invalide après retry -> throw avec les erreurs.
 {
   let threw = false;

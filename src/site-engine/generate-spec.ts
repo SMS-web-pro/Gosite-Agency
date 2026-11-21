@@ -64,6 +64,16 @@ CONTENU :
 - Les FAQ doivent être des VRAIES questions qu'un client poserait pour CE business
 - Les témoignages doivent utiliser des prénoms culturellement appropriés à la ville/pays
 - Les services doivent correspondre à ce que fait RÉELLEMENT ce type de business
+- homeSections DOIT contenir au minimum hero, services, contact (formulaire) et FAQ.
+  Si des photos sont disponibles, ajoute aussi une galerie.
+- servicePages doit couvrir les services affichés (une page par service, 3 à 6).
+- N'invente JAMAIS de fait, chiffre, label ou certification absents de la fiche :
+  pas de "100% naturel", "n°1", "10 ans d'expérience", "certifié" ou "leader"
+  si la donnée ne figure pas explicitement dans la fiche. Les seules preuves
+  autorisées sont la note, le nombre d'avis, les horaires, les services et les
+  garanties génériques de la niche.
+- Les valeurs de confiance doivent être naturelles et lisibles ("4,9/5",
+  "127 avis", "5 jours/7"), jamais ambiguës comme "5j/7".
 - Les pages légales doivent correspondre au pays du business (pas de références US pour le Maroc)
 - Le ton doit correspondre à la niche (luxe pour spa, énergique pour gym, rassurant pour médecin)
 
@@ -151,6 +161,13 @@ function issuesSummary(issues: z.ZodError["issues"]): string {
     .join("\n");
 }
 
+const REQUIRED_SECTIONS = ["hero", "services", "contact"] as const;
+
+function missingRequiredSections(spec: SiteSpec): string[] {
+  const present = new Set(spec.homeSections.map((s) => s.type));
+  return REQUIRED_SECTIONS.filter((t) => !present.has(t));
+}
+
 export async function generateSiteSpec(sheet: ClientSheet, opts?: { llm?: SpecLlmCall; avoid?: string[] }): Promise<SiteSpec> {
   const llm = opts?.llm ?? defaultLlm;
   const system = buildSystem();
@@ -160,11 +177,14 @@ export async function generateSiteSpec(sheet: ClientSheet, opts?: { llm?: SpecLl
   if (!raw) throw new Error("[coder] SiteSpec : LLM indisponible (Gemini non configuré ou en échec)");
 
   const result = SiteSpecSchema.safeParse(parseSpecJson(raw));
-  if (result.success) return result.data;
+  const missing = result.success ? missingRequiredSections(result.data) : [];
+  if (result.success && missing.length === 0) return result.data;
 
   // === RETRY AUTOMATIQUE avec les erreurs Zod ===
   console.warn("[coder] SiteSpec validation failed, retrying with error context");
-  const errorDetails = issuesSummary(result.error.issues);
+  const errorDetails = result.success
+    ? `- homeSections: sections obligatoires manquantes (${missing.join(", ")}). Ajoute hero, services, contact et FAQ.`
+    : issuesSummary(result.error.issues);
 
   const fixPrompt = `${user}\n\n---\nLe JSON que tu as généré précédemment contient des erreurs de validation :\n\n${errorDetails}\n\nJSON précédent (invalide) :\n${raw}\n\nCorrige ces erreurs et renvoie le JSON SiteSpec complet et corrigé.\nRAPPEL : JSON uniquement, pas de markdown, pas d'explication.`;
 
@@ -172,9 +192,11 @@ export async function generateSiteSpec(sheet: ClientSheet, opts?: { llm?: SpecLl
   if (!retryRaw) throw new Error("[coder] SiteSpec : LLM indisponible au retry de validation");
 
   const retryResult = SiteSpecSchema.safeParse(parseSpecJson(retryRaw));
-  if (retryResult.success) return retryResult.data;
+  const retryMissing = retryResult.success ? missingRequiredSections(retryResult.data) : [];
+  if (retryResult.success && retryMissing.length === 0) return retryResult.data;
 
-  throw new Error(
-    `[coder] SiteSpec validation failed after retry: ${retryResult.error.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ")}`,
-  );
+  const retryError = retryResult.success
+    ? `sections obligatoires manquantes: ${retryMissing.join(", ")}`
+    : retryResult.error.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ");
+  throw new Error(`[coder] SiteSpec validation failed after retry: ${retryError}`);
 }
