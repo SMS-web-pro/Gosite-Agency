@@ -19,6 +19,10 @@ RÈGLES ABSOLUES :
 - Modifie UNIQUEMENT ce que le client demande explicitement (téléphone, email, adresse, horaires, texte, service, FAQ, palette…).
 - Renvoie le SiteSpec COMPLET et VALIDE (mêmes clés, mêmes bornes), pas un fragment.
 - Conserve la langue du site (lang) et le businessModel existants.
+- Conserve design et design.paletteMode tels quels, sauf demande visuelle explicite.
+  Ne supprime JAMAIS design ; une édition de texte ne change ni styleGuide, ni hero, ni motion.
+- Si le client demande explicitement une couleur/palette, mets design.paletteMode:"brand"
+  et applique la palette demandée ; sinon ne touche pas au design.
 - N'invente AUCUNE donnée factuelle (chiffre, avis, garantie, prix) absente de la demande.
 - Si la demande n'est pas une modification de site (question, remerciement, négociation), mets "updated": false et renvoie le spec inchangé.
 - Si la demande exige une information manquante, mets "updated": false et explique dans "summary".
@@ -51,12 +55,26 @@ export async function editSiteSpec(
   const raw = await llm({ system: SYSTEM, user: baseUser, maxTokens: 12_000, temperature: 0.2, jsonMode: true });
   if (!raw) throw new Error("[support] édition du site : LLM indisponible");
 
+  const paletteChanged = (a: SiteSpec["palette"], b: SiteSpec["palette"]): boolean =>
+    a.primary !== b.primary ||
+    a.accent !== b.accent ||
+    a.neutralBg !== b.neutralBg ||
+    a.textDark !== b.textDark ||
+    a.textLight !== b.textLight;
+
+  const withDesign = (s: SiteSpec): SiteSpec => {
+    const next = current.design && !s.design ? { ...s, design: current.design } : s;
+    if (!current.design || !next.design || next.design.paletteMode === "brand") return next;
+    if (!paletteChanged(current.palette, next.palette)) return next;
+    return { ...next, design: { ...next.design, paletteMode: "brand" } };
+  };
+
   const parse = (text: string): { parsed: Record<string, unknown> | null; spec: SiteSpec | null } => {
     const parsed = parseLooseJson<Record<string, unknown>>(text);
     const updated = parsed?.updated !== false;
     const candidate = parsed?.spec ?? (updated ? undefined : current);
     const validated = SiteSpecSchema.safeParse(candidate);
-    return { parsed, spec: validated.success ? validated.data : null };
+    return { parsed, spec: validated.success ? withDesign(validated.data) : null };
   };
 
   let { parsed, spec } = parse(raw);

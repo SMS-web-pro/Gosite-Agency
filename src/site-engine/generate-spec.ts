@@ -5,7 +5,8 @@
 // il ne peut pas corriger ce qu'il n'a pas sous les yeux).
 
 import { z } from "zod";
-import { SiteSpecSchema, type SiteSpec } from "./site-spec.schema";
+import { SiteSpecSchema, STYLE_GUIDE_IDS, type SiteSpec } from "./site-spec.schema";
+import { STYLE_GUIDES, allowedHero, styleGuidesPrompt } from "./design/style-guides";
 import { parseLooseJson } from "../lib/agent-brain";
 import { geminiCompleteStep } from "../lib/gemini";
 
@@ -78,18 +79,7 @@ CONTENU :
 - Le ton doit correspondre à la niche (luxe pour spa, énergique pour gym, rassurant pour médecin)
 
 DESIGN :
-- Choisis le style de hero le plus adapté à la niche :
-  - "split" → services visuels (restaurant, gym, spa)
-  - "centered" → professionnels, corporate
-  - "fullwidth-bg" → immobilier, hôtellerie, événementiel
-  - "minimal" → cabinets, avocats, tech
-- Choisis la typographie la plus adaptée :
-  - luxe/spa → "playfair+source"
-  - sport/gym → "rubik+karla"
-  - artisanal/boulangerie → "lora+nunito"
-  - tech/startup → "inter+cabinet"
-  - corporate → "montserrat+opensans"
-  - friendly/accessible → "poppins+inter"
+${styleGuidesPrompt()}
 - L'ordre des sections doit suivre la logique de conversion pour CE business
   (ex: restaurant → hero, menu/services, galerie, avis, réservation/contact
    vs plombier → hero, trust, services, process, FAQ, contact)
@@ -112,12 +102,20 @@ function buildSystem(): string {
   return `${SYSTEM_PROMPT}\n\nSCHÉMA JSON SITESPEC (forme EXACTE attendue, JSON Schema) :\n${SCHEMA_JSON}`;
 }
 
-function buildUserPrompt(sheet: ClientSheet, avoid: string[] = []): string {
+function buildUserPrompt(sheet: ClientSheet, avoid: string[] = [], avoidStyles: string[] = []): string {
   const antiClone = avoid.length
     ? `\n\nCONTENU DÉJÀ PUBLIÉ — INTERDIT DE RÉUTILISER (même formulation) :\n${avoid
         .slice(0, 120)
         .map((s) => `- ${s}`)
         .join("\n")}\nÉcris des accroches, une metaTitle et des questions FAQ inédites pour CE client.`
+    : "";
+  const recentStyles = avoidStyles
+    .filter((id) => (STYLE_GUIDE_IDS as readonly string[]).includes(id))
+    .slice(0, 20);
+  const styleHistory = recentStyles.length
+    ? `\n\nSTYLE GUIDES RÉCEMMENT UTILISÉS — VARIER LA DIRECTION ARTISTIQUE :\n${recentStyles
+        .map((id) => `- ${id}`)
+        .join("\n")}\nChoisis un autre guide pertinent pour CE client, sauf si son métier l'impose.`
     : "";
   return `
 FICHE CLIENT :
@@ -143,7 +141,7 @@ FICHE CLIENT :
 - Couleur accent existante : ${sheet.ACCENT_COLOR || "à proposer"}
 - Style demandé : ${sheet.STYLE || "moderne et professionnel"}
 
-Génère le SiteSpec JSON complet pour ce client.${antiClone}`.trim();
+Génère le SiteSpec JSON complet pour ce client.${antiClone}${styleHistory}`.trim();
 }
 
 function parseSpecJson(raw: string): unknown {
@@ -161,6 +159,72 @@ function issuesSummary(issues: z.ZodError["issues"]): string {
     .join("\n");
 }
 
+const asObject = (v: unknown): Record<string, unknown> =>
+  v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : {};
+const cut = (v: unknown, max: number, fallback = ""): string =>
+  typeof v === "string" ? v.slice(0, max) : fallback;
+
+/** Répare les dérives fréquentes du LLM (meta trop longue, CTA invalide,
+ *  libellés hors bornes) avant validation — un site bloqué pour 3 caractères
+ *  de trop n'a aucun intérêt pour le client. Le fond reste intact. */
+function repairSpecJson(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+  const s = { ...(raw as Record<string, unknown>) };
+  s.metaTitle = cut(s.metaTitle, 60);
+  s.metaDescription = cut(s.metaDescription, 160);
+  s.ogDescription = cut(s.ogDescription, 200);
+
+  const repairMeta = (v: unknown): Record<string, unknown> => {
+    const p = asObject(v);
+    return { ...p, metaTitle: cut(p.metaTitle, 60), metaDescription: cut(p.metaDescription, 160) };
+  };
+  s.aboutPage = repairMeta(s.aboutPage);
+
+  const repairLegal = (v: unknown): Record<string, unknown> => {
+    const p = repairMeta(v);
+    return {
+      ...p,
+      title: cut(p.title, 60),
+      sections: Array.isArray(p.sections)
+        ? p.sections.map((sec) => {
+            const x = asObject(sec);
+            return { ...x, heading: cut(x.heading, 60), content: cut(x.content, 600) };
+          })
+        : p.sections,
+    };
+  };
+  s.privacyPage = repairLegal(s.privacyPage);
+  s.termsPage = repairLegal(s.termsPage);
+
+  if (Array.isArray(s.homeSections)) {
+    const limits: Record<string, number> = {
+      title: 60, subtitle: 120, headline: 80, subheadline: 200, eyebrow: 48,
+    };
+    s.homeSections = s.homeSections.map((sec) => {
+      const x = asObject(sec);
+      const out: Record<string, unknown> = { ...x };
+      for (const [key, max] of Object.entries(limits)) {
+        if (key in out) out[key] = cut(out[key], max);
+      }
+      if (Array.isArray(out.chips)) out.chips = out.chips.slice(0, 6).map((c) => cut(c, 40));
+      if ("primaryCta" in out) {
+        const cta = asObject(out.primaryCta);
+        out.primaryCta = {
+          ...cta,
+          label: cut(cta.label, 30),
+          action: ["call", "form", "whatsapp", "booking"].includes(String(cta.action)) ? cta.action : "call",
+        };
+      }
+      if ("secondaryCta" in out) {
+        const cta = asObject(out.secondaryCta);
+        out.secondaryCta = { ...cta, label: cut(cta.label, 30), action: cta.action === "link" ? "link" : "scroll" };
+      }
+      return out;
+    });
+  }
+  return s;
+}
+
 const REQUIRED_SECTIONS = ["hero", "services", "contact"] as const;
 
 function missingRequiredSections(spec: SiteSpec): string[] {
@@ -168,35 +232,68 @@ function missingRequiredSections(spec: SiteSpec): string[] {
   return REQUIRED_SECTIONS.filter((t) => !present.has(t));
 }
 
-export async function generateSiteSpec(sheet: ClientSheet, opts?: { llm?: SpecLlmCall; avoid?: string[] }): Promise<SiteSpec> {
+function specIssues(spec: SiteSpec): string[] {
+  const issues: string[] = [];
+  const missing = missingRequiredSections(spec);
+  if (missing.length) {
+    issues.push(`- homeSections: sections obligatoires manquantes (${missing.join(", ")}). Ajoute hero, services, contact et FAQ.`);
+  }
+
+  const hero = spec.homeSections.find((s) => s.type === "hero");
+  if (hero && hero.type === "hero") {
+    if (hero.style !== "immersive") {
+      issues.push('- hero.style: la valeur "immersive" est obligatoire pour cette génération premium.');
+    }
+    if (!hero.secondaryCta) {
+      issues.push("- secondaryCta: obligatoire dans la section hero (libellé + action scroll/link).");
+    }
+  }
+
+  if (!spec.design) {
+    issues.push("- design: obligatoire (styleGuide, hero, motion, paletteMode) ; aucun site legacy ne doit être généré.");
+  } else {
+    if (spec.design.paletteMode !== "guide") {
+      issues.push('- design.paletteMode: "guide" est obligatoire à la génération ; "brand" est réservé aux éditions client explicites.');
+    }
+    if (!allowedHero(spec.design.styleGuide, spec.design.hero)) {
+      const allowed = STYLE_GUIDES[spec.design.styleGuide].allowedHeroes.join(", ");
+      issues.push(`- design.hero "${spec.design.hero}" non autorisé pour ${spec.design.styleGuide}. Valeurs autorisées : ${allowed}`);
+    }
+  }
+
+  return issues;
+}
+
+export async function generateSiteSpec(
+  sheet: ClientSheet,
+  opts?: { llm?: SpecLlmCall; avoid?: string[]; avoidStyles?: string[] },
+): Promise<SiteSpec> {
   const llm = opts?.llm ?? defaultLlm;
   const system = buildSystem();
-  const user = buildUserPrompt(sheet, opts?.avoid);
+  const user = buildUserPrompt(sheet, opts?.avoid, opts?.avoidStyles);
 
   const raw = await llm({ system, user, maxTokens: 12000, temperature: 0.7, jsonMode: true });
-  if (!raw) throw new Error("[coder] SiteSpec : LLM indisponible (Gemini non configuré ou en échec)");
+  if (!raw) throw new Error("[coder] SiteSpec : LLM indisponible (Gemini ou LLM_BASE_URL/LLM_API_KEY non configuré)");
 
-  const result = SiteSpecSchema.safeParse(parseSpecJson(raw));
-  const missing = result.success ? missingRequiredSections(result.data) : [];
-  if (result.success && missing.length === 0) return result.data;
+  const result = SiteSpecSchema.safeParse(repairSpecJson(parseSpecJson(raw)));
+  const issues = result.success ? specIssues(result.data) : [];
+  if (result.success && issues.length === 0) return result.data;
 
-  // === RETRY AUTOMATIQUE avec les erreurs Zod ===
+  // === RETRY AUTOMATIQUE avec les erreurs de validation ===
   console.warn("[coder] SiteSpec validation failed, retrying with error context");
-  const errorDetails = result.success
-    ? `- homeSections: sections obligatoires manquantes (${missing.join(", ")}). Ajoute hero, services, contact et FAQ.`
-    : issuesSummary(result.error.issues);
+  const errorDetails = result.success ? issues.join("\n") : issuesSummary(result.error.issues);
 
   const fixPrompt = `${user}\n\n---\nLe JSON que tu as généré précédemment contient des erreurs de validation :\n\n${errorDetails}\n\nJSON précédent (invalide) :\n${raw}\n\nCorrige ces erreurs et renvoie le JSON SiteSpec complet et corrigé.\nRAPPEL : JSON uniquement, pas de markdown, pas d'explication.`;
 
   const retryRaw = await llm({ system, user: fixPrompt, maxTokens: 12000, temperature: 0.3, jsonMode: true });
   if (!retryRaw) throw new Error("[coder] SiteSpec : LLM indisponible au retry de validation");
 
-  const retryResult = SiteSpecSchema.safeParse(parseSpecJson(retryRaw));
-  const retryMissing = retryResult.success ? missingRequiredSections(retryResult.data) : [];
-  if (retryResult.success && retryMissing.length === 0) return retryResult.data;
+  const retryResult = SiteSpecSchema.safeParse(repairSpecJson(parseSpecJson(retryRaw)));
+  const retryIssues = retryResult.success ? specIssues(retryResult.data) : [];
+  if (retryResult.success && retryIssues.length === 0) return retryResult.data;
 
   const retryError = retryResult.success
-    ? `sections obligatoires manquantes: ${retryMissing.join(", ")}`
+    ? retryIssues.join("; ")
     : retryResult.error.issues.map((i) => i.path.join(".") + ": " + i.message).join("; ");
   throw new Error(`[coder] SiteSpec validation failed after retry: ${retryError}`);
 }

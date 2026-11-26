@@ -1,15 +1,16 @@
 import type { HomeSection, SiteSpec } from "../../site-spec.schema";
 import type { ClientSheet } from "../../types";
 import { escapeHtml } from "../../utils/escape";
-import { iconBadge, sectionOpen } from "../common/ui";
+import { serviceIcon } from "../common/icons";
+import { sectionOpen } from "../common/ui";
 
 type Services = Extract<HomeSection, { type: "services" }>;
 
 type Item = Services["items"][number];
 
 export function serviceCard(item: Item, layout: string): string {
-  return `<article class="service-card service-card-${layout}">
-        ${iconBadge(item.title)}
+  return `<article class="service-card service-card-${layout} reveal">
+        ${serviceIcon(item.icon, item.title)}
         <h3><a href="services/${escapeHtml(item.slug)}.html">${escapeHtml(item.title)}</a></h3>
         <p>${escapeHtml(item.shortDesc)}</p>
         <a class="service-arrow" href="services/${escapeHtml(item.slug)}.html" aria-label="${escapeHtml(item.title)}">&#8594;</a>

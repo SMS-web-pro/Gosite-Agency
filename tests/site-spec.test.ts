@@ -30,6 +30,14 @@ fails("metaTitle > 60 rejeté", (o) => { o.metaTitle = "x".repeat(61); }, "metaT
 fails("lang > 5 rejeté", (o) => { o.lang = "français"; }, "lang");
 fails("slug service invalide rejeté", (o) => { o.servicePages[0].slug = "Réparation Fuites"; }, "servicePages.0.slug");
 fails("page légale < 3 sections rejetée", (o) => { o.privacyPage.sections = o.privacyPage.sections.slice(0, 2); }, "privacyPage.sections");
+fails("eyebrow > 48 rejeté", (o) => { o.homeSections[0].eyebrow = "x".repeat(49); }, "homeSections.0.eyebrow");
+
+const withDesign = clone();
+withDesign.design = { styleGuide: "calendly-navy", hero: "immersive-full", motion: "balanced", paletteMode: "guide" };
+check("design valide accepté", SiteSpecSchema.safeParse(withDesign).success);
+const badGuide = clone();
+badGuide.design = { styleGuide: "nope", hero: "immersive-full", motion: "balanced", paletteMode: "guide" };
+check("guide inconnu rejeté", !SiteSpecSchema.safeParse(badGuide).success);
 
 const t = clone();
 t.homeSections.push({

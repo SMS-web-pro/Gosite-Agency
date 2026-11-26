@@ -6,6 +6,8 @@ import { heroSplit } from "./_lib/hero-split.ts";
 import { heroCentered } from "./_lib/hero-centered.ts";
 import { heroFullwidth } from "./_lib/hero-fullwidth.ts";
 import { heroMinimal } from "./_lib/hero-minimal.ts";
+import { heroImmersive } from "./_lib/hero-immersive.ts";
+import { serviceIcon } from "./_lib/icons.ts";
 import { servicesGrid3 } from "./_lib/services-grid3.ts";
 import { servicesGrid2 } from "./_lib/services-grid2.ts";
 import { servicesList } from "./_lib/services-list.ts";
@@ -181,6 +183,18 @@ const trust = {
 
   const mi = heroMinimal({ ...hero, style: "minimal" }, sheet, specFixture);
   check("hero-minimal: primary", mi.includes("btn-primary"));
+
+  const premiumHero = { ...hero, style: "immersive" as const, eyebrow: "Plomberie premium" };
+  const hi = heroImmersive(premiumHero, sheet, {
+    ...specFixture,
+    design: { styleGuide: "calendly-navy", hero: "immersive-full", motion: "balanced", paletteMode: "guide" } as const,
+  });
+  check("hero-immersive: classe + variante", hi.includes('class="hero hero-immersive"') && hi.includes('data-hero="immersive-full"'));
+  check("hero-immersive: eyebrow", hi.includes("Plomberie premium"));
+  check("hero-immersive: 2 CTA", hi.includes("Appeler") && hi.includes("Services"));
+  check("hero-immersive: image eager", hi.includes('loading="eager"'));
+  check("hero-immersive: scroll services", hi.includes('href="#services"'));
+  check("hero-immersive: défaut sans design", heroImmersive(premiumHero, sheet, specFixture).includes('data-hero="immersive-full"'));
 }
 
 // ── Services x4 ─────────────────────────────────────────────────────────────
@@ -188,8 +202,13 @@ const trust = {
   const g3 = servicesGrid3(services, sheet, specFixture);
   check("services: ancre id", g3.includes('id="services"'));
   check("services: 3 cartes", (g3.match(/class="service-card /g) || []).length === 3);
+  check("services: cartes révélées", (g3.match(/class="service-card[^"]*\breveal\b/g) || []).length === 3);
   check("services: lien page", g3.includes('href="services/reparation-fuites.html"'));
-  check("services: badge initiale", g3.includes('class="icon-badge" aria-hidden="true">R</span>'));
+  check("services: icône connue", g3.includes('<span class="service-icon" aria-hidden="true"><svg'));
+  const unknownIcon = serviceIcon("inconnue", "<b>Test</b>");
+  check("service-icon: inconnue -> initiale échappée", unknownIcon.includes("&lt;") && !unknownIcon.includes("<b>"));
+  const ctorIcon = serviceIcon("constructor", "Test");
+  check("service-icon: clé prototype ignorée", ctorIcon.includes('class="service-icon"') && !ctorIcon.includes("<svg"));
   check("services grid2", servicesGrid2(services, sheet, specFixture).includes("services-grid-2"));
   const list = servicesList(services, sheet, specFixture);
   check("services list: numéros 01..03", list.includes(">01<") && list.includes(">03<"));
@@ -252,6 +271,8 @@ const trust = {
 {
   const gm = galleryMasonry(gallery, sheet, specFixture);
   check("gallery masonry: 3 figures", (gm.match(/<figure/g) || []).length === 3);
+  check("gallery: tuiles révélées", (gm.match(/<figure class="gallery-item[^"]*\breveal\b/g) || []).length === 3);
+  check("gallery grid: tuiles révélées", (galleryGrid({ ...gallery, layout: "grid-2x2" }, sheet, specFixture).match(/<figure class="gallery-item[^"]*\breveal\b/g) || []).length === 3);
   check("gallery: image du sheet", gm.includes("g1.jpg"));
   check("gallery: caption", gm.includes("Salle de bain"));
   check("gallery slider: classe", galleryGrid({ ...gallery, layout: "slider" }, sheet, specFixture).includes("gallery-slider"));
@@ -277,12 +298,13 @@ const trust = {
   const tb = trustBar(trust, sheet, specFixture);
   check("trust: valeurs", tb.includes("500+") && tb.includes("4.8/5"));
   check("trust: labels", tb.includes("clients") && tb.includes("note Google"));
+  check("trust: items révélés", (tb.match(/class="trust-item reveal"/g) || []).length === 3);
 }
 
 // ── Registre + CSS ──────────────────────────────────────────────────────────
 {
   const expected = {
-    hero: ["split", "centered", "fullwidth-bg", "minimal"],
+    hero: ["split", "centered", "fullwidth-bg", "minimal", "immersive"],
     services: ["grid-3", "grid-2", "list", "cards-horizontal"],
     process: ["timeline", "numbered", "icons-row"],
     about: ["default"],
@@ -317,9 +339,14 @@ const trust = {
   check("base css: boutons", BASE_CSS.includes(".btn-accent") && BASE_CSS.includes(".btn-ghost"));
   check("components css: header", COMPONENTS_CSS.includes(".site-header"));
   check("components css: heroes", COMPONENTS_CSS.includes(".hero-fullwidth") && COMPONENTS_CSS.includes(".hero-centered"));
+  check("components css: hero immersif + icône", COMPONENTS_CSS.includes(".hero-immersive") && COMPONENTS_CSS.includes(".service-icon"));
   check("components css: galerie + contact", COMPONENTS_CSS.includes(".gallery-masonry") && COMPONENTS_CSS.includes(".contact-form"));
   check("components css: mobile bar", COMPONENTS_CSS.includes(".mobile-bar"));
   check("components css: breakpoints", COMPONENTS_CSS.includes("640px") && COMPONENTS_CSS.includes("768px") && COMPONENTS_CSS.includes("1024px"));
+  check("base css: texte accent dédié", BASE_CSS.includes("var(--color-on-accent"));
+  check("components css: value-card contraste", /\.value-card\{[^}]*color:var\(--color-text\)/.test(COMPONENTS_CSS));
+  check("components css: process-card relative", /\.process-card\{[^}]*position:relative/.test(COMPONENTS_CSS));
+  check("components css: chips fullwidth protégés", COMPONENTS_CSS.includes("html[data-guide] .hero-fullwidth .chips li"));
   check("css: aucun undefined", !BASE_CSS.includes("undefined") && !COMPONENTS_CSS.includes("undefined"));
   check("css: zéro import externe", !/@import/.test(BASE_CSS + COMPONENTS_CSS));
 }

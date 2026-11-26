@@ -4,7 +4,8 @@
 // v6 (buildSiteBundle/renderFallbackIndex) n'est plus utilisé pour les
 // nouveaux sites (spec 1.5/2.7, correctif « sites trop null »).
 
-import { geminiCompleteStep } from "./gemini";
+import { geminiCompleteStep, geminiKeysConfigured } from "./gemini";
+import { chatCompletion, llmConfigured } from "./llm";
 import { findNiche } from "./niches";
 import { pickSeededImages } from "./images";
 import { downloadImages, type ImageSlot } from "./bundle-images";
@@ -44,7 +45,50 @@ export type EngineBuildOpts = {
   deadlineMs?: number;
   /** Accroches/meta/FAQ déjà publiées à ne pas réutiliser (anti-clone). */
   avoid?: string[];
+  /** Style guides récemment utilisés, à éviter quand la niche le permet. */
+  avoidStyles?: string[];
 };
+
+type SpecLlmDeps = {
+  geminiConfigured: () => Promise<boolean>;
+  geminiCall: (p: {
+    system: string; user: string; maxTokens: number; temperature: number;
+    jsonMode: boolean; timeoutMs: number; deadlineMs?: number;
+  }) => Promise<string | null>;
+  llmConfigured: () => Promise<boolean>;
+  chat: (p: { system: string; user: string; maxTokens?: number; temperature?: number; timeoutMs?: number }) => Promise<string | null>;
+};
+
+/** Gemini reste le moteur prioritaire, mais le LLM omniroute configuré
+ *  (Nemotron, etc.) prend le relais si Gemini est absent ou en échec. */
+export function createSpecLlm(deps: SpecLlmDeps, opts: { timeoutMs?: number; deadlineMs?: number }): SpecLlmCall {
+  return async (p) => {
+    if (await deps.geminiConfigured()) {
+      const out = await deps.geminiCall({
+        system: p.system, user: p.user, maxTokens: p.maxTokens,
+        temperature: p.temperature, jsonMode: p.jsonMode,
+        timeoutMs: opts.timeoutMs ?? 40_000, deadlineMs: opts.deadlineMs,
+      });
+      if (out) return out;
+    }
+    if (await deps.llmConfigured()) {
+      return deps.chat({
+        system: p.system, user: p.user, maxTokens: p.maxTokens,
+        temperature: p.temperature, timeoutMs: opts.timeoutMs ?? 40_000,
+      });
+    }
+    return null;
+  };
+}
+
+function defaultSpecLlm(opts: { timeoutMs?: number; deadlineMs?: number }): SpecLlmCall {
+  return createSpecLlm({
+    geminiConfigured: geminiKeysConfigured,
+    geminiCall: geminiCompleteStep,
+    llmConfigured,
+    chat: chatCompletion,
+  }, opts);
+}
 
 /** Fiche du moteur : domaine absolu, endpoint formulaire, images locales
  *  exposées en URLs absolues (les composants n'acceptent pas les chemins
@@ -245,17 +289,8 @@ export async function buildSiteV7(
   const engineSheet = buildEngineSheet(sheet, prospectId, slug, imgs, opts.baseUrl);
   const llm: SpecLlmCall =
     opts.llm ??
-    ((p) =>
-      geminiCompleteStep({
-        system: p.system,
-        user: p.user,
-        maxTokens: p.maxTokens,
-        temperature: p.temperature,
-        jsonMode: p.jsonMode,
-        timeoutMs: opts.timeoutMs ?? 40_000,
-        deadlineMs: opts.deadlineMs ?? 48_000,
-      }));
-  const spec = await generateSiteSpec(engineSheet, { llm, avoid: opts.avoid });
+    defaultSpecLlm({ timeoutMs: opts.timeoutMs ?? 40_000, deadlineMs: opts.deadlineMs ?? 48_000 });
+  const spec = await generateSiteSpec(engineSheet, { llm, avoid: opts.avoid, avoidStyles: opts.avoidStyles });
 
   // 3. Rendu déterministe + images locales (base64) réattachées au bundle.
   const bundle: Record<string, string> = { ...renderFullSite(spec, engineSheet), ...(imgs.files ?? {}) };

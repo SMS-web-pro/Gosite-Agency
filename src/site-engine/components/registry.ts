@@ -5,6 +5,7 @@ import { heroSplit } from "./hero/hero-split";
 import { heroCentered } from "./hero/hero-centered";
 import { heroFullwidth } from "./hero/hero-fullwidth";
 import { heroMinimal } from "./hero/hero-minimal";
+import { heroImmersive } from "./hero/hero-immersive";
 import { servicesGrid3 } from "./services/services-grid3";
 import { servicesGrid2 } from "./services/services-grid2";
 import { servicesList } from "./services/services-list";
@@ -32,6 +33,7 @@ export const COMPONENT_REGISTRY: Record<string, Record<string, SectionRenderer>>
     centered: heroCentered,
     "fullwidth-bg": heroFullwidth,
     minimal: heroMinimal,
+    immersive: heroImmersive,
   },
   services: {
     "grid-3": servicesGrid3,

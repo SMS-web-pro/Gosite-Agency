@@ -3,7 +3,7 @@
 
 import { generateSiteSpec } from "./_lib/generate-spec.ts";
 import { renderFullSite } from "./_lib/render.ts";
-import { specFixture, specSheet } from "./spec-fixture.ts";
+import { premiumSpecFixture, specSheet } from "./spec-fixture.ts";
 
 let fail = 0;
 const check = (n: string, c: boolean) => { if (!c) { fail++; console.log("FAIL", n); } else console.log("ok  ", n); };
@@ -14,7 +14,7 @@ function gymLlm(variant: 1 | 2) {
   return async (p: { user: string }): Promise<string> => {
     const name = /Nom du business : (.+)/.exec(p.user)?.[1]?.trim() ?? "Gym";
     const city = /Ville : (.+)/.exec(p.user)?.[1]?.trim() ?? "Ville";
-    const s = clone(specFixture);
+    const s = clone(premiumSpecFixture);
     s.businessModel = "membership";
     s.metaTitle = `${name} — ${city}`.slice(0, 60);
     s.metaDescription = variant === 1

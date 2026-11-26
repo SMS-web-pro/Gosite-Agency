@@ -18,7 +18,7 @@ export function galleryGrid(section: Gallery, sheet: ClientSheet, _spec: SiteSpe
     <div class="${layoutClass}">
       ${section.captions
         .map(
-          (c, i) => `<figure class="gallery-item">
+          (c, i) => `<figure class="gallery-item reveal">
         ${imgTag(imgs[i % Math.max(1, imgs.length)], c)}
         <figcaption>${escapeHtml(c)}</figcaption>
       </figure>`,

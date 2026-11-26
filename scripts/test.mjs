@@ -51,7 +51,8 @@ for (const f of LIB_FILES) {
         const base = p.split("/").pop() ?? p;
         return `from "./${base.endsWith(".ts") ? base : `${base}.ts`}"`;
       })
-      .replace(/from "\.\/gemini\.ts"/g, 'from "./coder-gemini-stub.ts"');
+      .replace(/from "\.\/gemini\.ts"/g, 'from "./coder-gemini-stub.ts"')
+      .replace(/from "\.\/llm\.ts"/g, 'from "./coder-llm-stub.ts"');
   }
   if (f === "emailer.ts") {
     // Réécrire AUSSI les imports dynamiques (import("./x")) : site-config et
@@ -86,6 +87,7 @@ for (const f of LIB_FILES) {
 
   const files = [
     ["site-spec.schema.ts", "site-spec.schema.ts"],
+    ["design/style-guides.ts", "style-guides.ts"],
     ["types.ts", "types.ts"],
     ["generate-spec.ts", "generate-spec.ts"],
     ["css/generate-theme.ts", "generate-theme.ts"],
@@ -96,6 +98,7 @@ for (const f of LIB_FILES) {
     ["utils/format-address.ts", "format-address.ts"],
     ["utils/format-phone.ts", "format-phone.ts"],
     ["components/common/ui.ts", "ui.ts"],
+    ["components/common/icons.ts", "icons.ts"],
     ["components/common/header.ts", "header.ts"],
     ["components/common/footer.ts", "footer.ts"],
     ["components/common/mobile-bar.ts", "mobile-bar.ts"],
@@ -104,6 +107,7 @@ for (const f of LIB_FILES) {
     ["components/hero/hero-centered.ts", "hero-centered.ts"],
     ["components/hero/hero-fullwidth.ts", "hero-fullwidth.ts"],
     ["components/hero/hero-minimal.ts", "hero-minimal.ts"],
+    ["components/hero/hero-immersive.ts", "hero-immersive.ts"],
     ["components/services/services-grid3.ts", "services-grid3.ts"],
     ["components/services/services-grid2.ts", "services-grid2.ts"],
     ["components/services/services-list.ts", "services-list.ts"],
@@ -135,6 +139,7 @@ for (const f of LIB_FILES) {
     ["images/favicon-gen.ts", "favicon-gen.ts"],
     ["images/og-image-gen.ts", "og-image-gen.ts"],
     ["scripts/reveal.ts", "reveal.ts"],
+    ["scripts/motion.ts", "motion.ts"],
     ["render.ts", "render.ts"],
   ];
   for (const [from, to] of files) {

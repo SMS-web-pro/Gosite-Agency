@@ -1,7 +1,8 @@
 // Phase 10 (spec 3.1) — édition du SiteSpec par le Support (LLM injecté).
 
 import { editSiteSpec } from "./_lib/site-editor.ts";
-import { specFixture } from "./spec-fixture.ts";
+import type { SiteSpec } from "./_lib/site-spec.schema.ts";
+import { premiumSpecFixture, specFixture } from "./spec-fixture.ts";
 
 let fail = 0;
 const check = (n: string, c: boolean) => { if (!c) { fail++; console.log("FAIL", n); } else console.log("ok  ", n); };
@@ -57,6 +58,61 @@ const llmOnce = (payload: unknown, counter?: { n: number }) =>
   });
   check("edit: retry déclenché", counter.n === 2);
   check("edit: retry valide", r.updated && r.spec.aboutPage.mission === changed.aboutPage.mission);
+}
+
+// ── DesignSpec : jamais de downgrade silencieux vers legacy ─────────────────
+{
+  const premium = clone(premiumSpecFixture) as SiteSpec;
+  const noDesign = clone(premium) as SiteSpec;
+  delete (noDesign as { design?: unknown }).design;
+  const r = await editSiteSpec(premium, "Change la mission.", {
+    llm: llmOnce({ updated: true, summary: "Mission", spec: noDesign }),
+  });
+  check("edit: design restauré", r.spec.design?.styleGuide === "calendly-navy" && r.spec.design?.motion === "balanced");
+}
+
+// ── Demande de couleur explicite : paletteMode brand conservé ───────────────
+{
+  const premium = clone(premiumSpecFixture) as SiteSpec;
+  const brand = clone(premium) as SiteSpec;
+  brand.design = { ...brand.design!, paletteMode: "brand" };
+  brand.palette.primary = "#123456";
+  const rb = await editSiteSpec(premium, "Utilise la couleur #123456.", {
+    llm: llmOnce({ updated: true, summary: "Couleur", spec: brand }),
+  });
+  check("edit: palette brand conservée", rb.spec.design?.paletteMode === "brand" && rb.spec.palette.primary === "#123456");
+}
+
+// ── Palette modifiée sans mode brand : jamais de no-op silencieux ───────────
+{
+  const premium = clone(premiumSpecFixture) as SiteSpec;
+  const noDesign = clone(premium) as SiteSpec;
+  delete (noDesign as { design?: unknown }).design;
+  noDesign.palette.primary = "#123456";
+  const r = await editSiteSpec(premium, "Utilise la couleur #123456.", {
+    llm: llmOnce({ updated: true, summary: "Couleur", spec: noDesign }),
+  });
+  check("edit: palette changée sans design → brand", r.spec.design?.paletteMode === "brand" && r.spec.palette.primary === "#123456");
+}
+
+{
+  const premium = clone(premiumSpecFixture) as SiteSpec;
+  const guideMode = clone(premium) as SiteSpec;
+  guideMode.palette.accent = "#654321";
+  const r = await editSiteSpec(premium, "Utilise la couleur #654321 en accent.", {
+    llm: llmOnce({ updated: true, summary: "Couleur", spec: guideMode }),
+  });
+  check("edit: palette changée en mode guide → brand", r.spec.design?.paletteMode === "brand" && r.spec.palette.accent === "#654321");
+}
+
+// ── Spec legacy : le comportement reste inchangé ────────────────────────────
+{
+  const legacyChanged = clone(specFixture);
+  legacyChanged.aboutPage.mission = "Mission legacy mise à jour.";
+  const r = await editSiteSpec(specFixture, "Change la mission legacy.", {
+    llm: llmOnce({ updated: true, summary: "Mission legacy", spec: legacyChanged }),
+  });
+  check("edit: legacy sans design reste legacy", r.spec.design === undefined && r.spec.aboutPage.mission === "Mission legacy mise à jour.");
 }
 
 // ── Échecs ──────────────────────────────────────────────────────────────────

@@ -1,11 +1,44 @@
 import { z } from "zod";
 
+// === DesignSpec — directions artistiques déterministes ===
+
+export const STYLE_GUIDE_IDS = [
+  "craft-scrapbook",
+  "ai-brutalist",
+  "calendly-navy",
+  "awesomic-grid",
+  "interviews-editorial",
+  "officevibe-playful",
+  "basis-technical",
+] as const;
+
+export const HERO_VARIANTS = [
+  "immersive-full",
+  "editorial-split",
+  "collage",
+  "brutalist",
+  "technical",
+] as const;
+
+export const MOTION_LEVELS = ["subtle", "balanced", "expressive"] as const;
+export const PALETTE_MODES = ["guide", "brand"] as const;
+
+export const DesignSpecSchema = z.object({
+  styleGuide: z.enum(STYLE_GUIDE_IDS),
+  hero: z.enum(HERO_VARIANTS),
+  motion: z.enum(MOTION_LEVELS),
+  paletteMode: z.enum(PALETTE_MODES),
+});
+
+export type DesignSpec = z.infer<typeof DesignSpecSchema>;
+
 // === Sections de la page d'accueil ===
 
 const SectionHero = z.object({
   type: z.literal("hero"),
   headline: z.string().min(10).max(80),
   subheadline: z.string().min(20).max(200),
+  eyebrow: z.string().max(48).optional(),
   primaryCta: z.object({
     label: z.string().max(30),
     action: z.enum(["call", "form", "whatsapp", "booking"]),
@@ -15,7 +48,7 @@ const SectionHero = z.object({
     action: z.enum(["scroll", "link"]),
   }).optional(),
   chips: z.array(z.string().max(40)).min(3).max(6),
-  style: z.enum(["split", "centered", "fullwidth-bg", "minimal"]),
+  style: z.enum(["split", "centered", "fullwidth-bg", "minimal", "immersive"]),
 });
 
 const SectionServices = z.object({
@@ -181,8 +214,12 @@ export const SiteSpecSchema = z.object({
     "rubik+karla",        // bold, sport, énergie
     "lora+nunito",        // chaleureux, artisanal, boulangerie
     "montserrat+opensans",// corporate, professionnel
+    "fraunces+manrope",   // papier, éditorial, artisanal
+    "space-grotesk+inter",// brutalist, technique, tech
+    "archivo+inter",      // éditorial, grid, surdimensionné
   ]),
   borderRadius: z.enum(["sharp", "soft", "rounded", "pill"]),
+  design: DesignSpecSchema.optional(),
 
   // Contenu page d'accueil
   homeSections: z.array(HomeSectionSchema).min(5).max(10),
