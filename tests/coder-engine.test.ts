@@ -201,8 +201,8 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
 // ── Détection de bundles obsolètes ──────────────────────────────────────────
 {
   const v6 = "topbar trustbar w-card p-step faq-item t-star mobile-bar data-reveal api/site-form/";
-  check("stale: bundle v6 complet reconnu", isStaleSiteBundle({ "index.html": v6 }, null) === false);
-  check("stale: html v6 complet reconnu", isStaleSiteBundle(null, v6) === false);
+  check("stale: bundle v6 complet → obsolète", isStaleSiteBundle({ "index.html": v6 }, null) === true);
+  check("stale: html v6 complet → obsolète", isStaleSiteBundle(null, v6) === true);
   check("stale: bundle sans marqueurs rejeté", isStaleSiteBundle({ "index.html": "<html></html>" }, null) === true);
   check("stale: html vide rejeté", isStaleSiteBundle(null, "") === true);
 }

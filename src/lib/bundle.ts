@@ -259,17 +259,13 @@ export function patchIndexDomain(html: string, fromBase: string, toBase: string)
   return html.replace(rx, toBase);
 }
 
-/** Détecte un bundle obsolète : généré avant le spec v6 complet (topbar,
- *  trustbar, why, process, étoiles en cascade, FAQ, barre mobile). Les vieux
- *  bundles sauvés en DB partaient en prod tels quels — le deployer doit
- *  régénérer avant tout déploiement. TOUS les marqueurs sont requis. */
-const V6_MARKERS = ["topbar", "trustbar", "w-card", "p-step", "faq-item", "t-star", "mobile-bar", "data-reveal", "api/site-form/"];
-// v7 (moteur SiteSpec) : marqueur <meta name="generator"> commun à toutes les
-// pages — sans lui, les bundles v7 (sans t-star/topbar) seraient rejoués en
-// boucle rebuild → deploy → rebuild.
+/** Détecte un bundle obsolète : tout site qui n'a PAS été rendu par le moteur
+ *  SiteSpec v7 doit être régénéré. Les anciens bundles v6 (même complets avec
+ *  topbar/trustbar/t-star/…) partaient en production tels quels : c'est la
+ *  cause des sites « gabarit » encore en ligne après le déploiement v7. */
 const V7_MARKER = 'name="generator" content="gosite-site-engine/v7"';
 export function isStaleSiteBundle(bundle: Record<string, string> | null | undefined, html: string | null | undefined): boolean {
-  const conform = (s: string) => s.includes(V7_MARKER) || V6_MARKERS.every((m) => s.includes(m));
+  const conform = (s: string) => s.includes(V7_MARKER);
   if (bundle && Object.keys(bundle).length > 0) {
     const idx = bundle["/index.html"] ?? bundle["index.html"] ?? "";
     if (idx) return !conform(idx);
