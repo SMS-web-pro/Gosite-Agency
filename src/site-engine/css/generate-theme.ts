@@ -50,6 +50,21 @@ const FONT_MAP: Record<SiteSpec["fontPairing"], FontDef> = {
     body: "'Open Sans', sans-serif",
     hrefs: [google("family=Montserrat:wght@500;600;700&family=Open+Sans:wght@400;500;600")],
   },
+  "fraunces+manrope": {
+    heading: "'Fraunces', serif",
+    body: "'Manrope', sans-serif",
+    hrefs: [google("family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Manrope:wght@400;500;600")],
+  },
+  "space-grotesk+inter": {
+    heading: "'Space Grotesk', sans-serif",
+    body: "'Inter', sans-serif",
+    hrefs: [google("family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600")],
+  },
+  "archivo+inter": {
+    heading: "'Archivo', sans-serif",
+    body: "'Inter', sans-serif",
+    hrefs: [google("family=Archivo:wght@500;600;700&family=Inter:wght@400;500;600")],
+  },
 };
 
 /** URLs des feuilles de style à poser dans le <head> pour cette pairing. */

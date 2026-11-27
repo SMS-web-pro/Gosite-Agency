@@ -3,6 +3,7 @@ import type { ClientSheet, SiteBundle } from "./types";
 import { generateThemeCSS } from "./css/generate-theme";
 import { BASE_CSS } from "./css/base";
 import { COMPONENTS_CSS } from "./css/components";
+import { applyDesignToSpec, styleGuideCSS } from "./design/style-guides";
 import { renderHomePage } from "./pages/home";
 import { renderServiceDetailPage } from "./pages/service-detail";
 import { renderAboutPage } from "./pages/about";
@@ -30,35 +31,37 @@ export function resolveBaseUrl(sheet: ClientSheet): string {
  * (html/css/xml/txt/webmanifest/svg/vercel.json). Zéro LLM au rendu.
  */
 export function renderFullSite(spec: SiteSpec, sheet: ClientSheet): SiteBundle {
+  const themed = applyDesignToSpec(spec);
   const baseUrl = resolveBaseUrl(sheet);
-  const themeCSS = generateThemeCSS(spec.palette, spec.fontPairing, spec.borderRadius);
-  const allCSS = `${BASE_CSS}\n${themeCSS}\n${COMPONENTS_CSS}`;
+  const themeCSS = generateThemeCSS(themed.palette, themed.fontPairing, themed.borderRadius);
+  const guideCSS = styleGuideCSS(themed);
+  const allCSS = `${BASE_CSS}\n${themeCSS}\n${COMPONENTS_CSS}\n${guideCSS}`;
 
   const bundle: SiteBundle = {};
 
   // Page d'accueil
-  bundle["index.html"] = renderHomePage(spec, sheet, allCSS, baseUrl);
+  bundle["index.html"] = renderHomePage(themed, sheet, allCSS, baseUrl);
 
   // Pages services
-  for (const sp of spec.servicePages) {
-    bundle[`services/${sp.slug}.html`] = renderServiceDetailPage(sp, spec, sheet, allCSS, baseUrl);
+  for (const sp of themed.servicePages) {
+    bundle[`services/${sp.slug}.html`] = renderServiceDetailPage(sp, themed, sheet, allCSS, baseUrl);
   }
 
   // Pages fixes
-  bundle["about.html"] = renderAboutPage(spec.aboutPage, spec, sheet, allCSS, baseUrl);
-  bundle["privacy.html"] = renderPrivacyPage(spec.privacyPage, spec, sheet, allCSS, baseUrl);
-  bundle["terms.html"] = renderTermsPage(spec.termsPage, spec, sheet, allCSS, baseUrl);
-  bundle["404.html"] = render404Page(spec, sheet, allCSS, baseUrl);
+  bundle["about.html"] = renderAboutPage(themed.aboutPage, themed, sheet, allCSS, baseUrl);
+  bundle["privacy.html"] = renderPrivacyPage(themed.privacyPage, themed, sheet, allCSS, baseUrl);
+  bundle["terms.html"] = renderTermsPage(themed.termsPage, themed, sheet, allCSS, baseUrl);
+  bundle["404.html"] = render404Page(themed, sheet, allCSS, baseUrl);
 
   // SEO
-  const pages = ["", "about", "privacy", "terms", ...spec.servicePages.map((s) => `services/${s.slug}`)];
+  const pages = ["", "about", "privacy", "terms", ...themed.servicePages.map((s) => `services/${s.slug}`)];
   bundle["sitemap.xml"] = generateSitemap(baseUrl, pages);
   bundle["robots.txt"] = generateRobots(baseUrl);
-  bundle["site.webmanifest"] = generateManifest(sheet, spec);
+  bundle["site.webmanifest"] = generateManifest(sheet, themed);
 
   // Assets déterministes
-  bundle["favicon.svg"] = generateFavicon(sheet.BUSINESS_NAME, spec.palette.primary);
-  bundle["og-image.svg"] = generateOgImage(sheet, spec);
+  bundle["favicon.svg"] = generateFavicon(sheet.BUSINESS_NAME, themed.palette.primary);
+  bundle["og-image.svg"] = generateOgImage(sheet, themed);
 
   // Hébergement
   bundle["vercel.json"] = JSON.stringify({ cleanUrls: true }, null, 2);

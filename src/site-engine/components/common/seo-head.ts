@@ -30,6 +30,12 @@ export function renderHead(opts: HeadOpts): string {
     .map((h) => `<link rel="stylesheet" href="${escapeHtml(h)}">`)
     .join("\n");
 
+  const motion = spec.design
+    ? `<link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js" defer></script>`
+    : "";
+
   const faq = opts.jsonLd ? faqJsonLd(spec) : null;
 
   return `<meta charset="utf-8">
@@ -55,6 +61,7 @@ ${ogImage ? `<meta name="twitter:image" content="${escapeHtml(ogImage)}">` : ""}
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://api.fontshare.com">
 ${fonts}
+${motion}
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 ${opts.jsonLd ? `<script type="application/ld+json">${jsonLdSafe(localBusinessJsonLd(sheet, spec, canonical))}</script>` : ""}
 ${faq ? `<script type="application/ld+json">${jsonLdSafe(faq)}</script>` : ""}`;

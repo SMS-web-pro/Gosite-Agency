@@ -444,17 +444,19 @@ export async function mapProspect(p: Prospect) {
 type EditorialSpec = {
   metaTitle?: string;
   homeSections?: Array<{ type?: string; headline?: string; items?: Array<{ question?: string }> }>;
+  design?: { styleGuide?: string };
 };
 const normEditorial = (s: unknown): string =>
   String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 
-/** Accroches/meta/FAQ des derniers sites publiés : interdites de réutilisation
- *  par le LLM. Évite les clones exacts entre deux leads de la même niche. */
-async function recentEditorialAvoid(): Promise<string[]> {
+/** Accroches/meta/FAQ et guides des derniers sites publiés. Les formulations
+ *  sont interdites de réutilisation ; les guides sont à varier quand le métier
+ *  le permet. Évite les clones exacts entre deux leads de la même niche. */
+export async function recentSiteHistory(): Promise<{ avoid: string[]; styleGuides: string[] }> {
   const rows = await db.select({ siteSpec: prospects.siteSpec }).from(prospects)
     .where(isNotNull(prospects.siteSpec)).orderBy(desc(prospects.updatedAt)).limit(25);
-  const headlines: string[] = [], metas: string[] = [], faqs: string[] = [];
-  const seen = new Set<string>();
+  const headlines: string[] = [], metas: string[] = [], faqs: string[] = [], styleGuides: string[] = [];
+  const seen = new Set<string>(), seenGuides = new Set<string>();
   const add = (bucket: string[], v: unknown) => {
     const t = String(v ?? "").trim();
     if (t.length < 8 || seen.has(normEditorial(t))) return;
@@ -465,10 +467,15 @@ async function recentEditorialAvoid(): Promise<string[]> {
     add(headlines, s.homeSections?.find((x) => x.type === "hero")?.headline);
     add(metas, s.metaTitle);
     for (const sec of s.homeSections ?? []) if (sec.type === "faq") for (const f of sec.items ?? []) add(faqs, f.question);
+    const guide = s.design?.styleGuide;
+    if (guide && !seenGuides.has(guide)) { seenGuides.add(guide); styleGuides.push(guide); }
   }
   // Large échantillon : les 25 derniers headlines/metas + 60 questions FAQ,
   // pour que le LLM ne réutilise pas les formulations des sites récents.
-  return [...headlines.slice(0, 25), ...metas.slice(0, 25), ...faqs.slice(0, 60)];
+  return {
+    avoid: [...headlines.slice(0, 25), ...metas.slice(0, 25), ...faqs.slice(0, 60)],
+    styleGuides,
+  };
 }
 
 function editorialCollisions(spec: unknown, avoid: string[]): string[] {
@@ -484,8 +491,8 @@ export async function buildProspectSite(p: Prospect) {
   const slug = await decideSlug(p);
   try {
     const { buildSiteV7 } = await import("./coder-engine");
-    const avoid = await recentEditorialAvoid();
-    let v7 = await buildSiteV7(sheet, p.id, { slug, avoid });
+    const { avoid, styleGuides } = await recentSiteHistory();
+    let v7 = await buildSiteV7(sheet, p.id, { slug, avoid, avoidStyles: styleGuides });
     const collisions = editorialCollisions(v7.spec, avoid);
     if (collisions.length) {
       await logActivity({
@@ -493,7 +500,7 @@ export async function buildProspectSite(p: Prospect) {
         message: `Accroche/meta déjà publiée pour ${p.businessName} — régénération avec consigne anti-clone : ${collisions.join(" | ")}`.slice(0, 300),
         level: "warn", prospectId: p.id,
       });
-      v7 = await buildSiteV7(sheet, p.id, { slug, avoid: [...avoid, ...collisions] });
+      v7 = await buildSiteV7(sheet, p.id, { slug, avoid: [...avoid, ...collisions], avoidStyles: styleGuides });
     }
     await updateWithSlug(p.id, slug, { siteHtml: v7.html, siteBundle: v7.bundle, siteSpec: v7.spec, stage: "site_built" });
     await markAgentRunEnd("coder", true);
@@ -618,9 +625,9 @@ export async function regenerateDeployedSiteV7(p: Prospect): Promise<{ ok: boole
   const base = p.domainUrl || p.deployedUrl;
   try {
     const { buildSiteV7 } = await import("./coder-engine");
-    const avoid = await recentEditorialAvoid();
+    const { avoid, styleGuides } = await recentSiteHistory();
     const build = () => buildSiteV7(sheet, p.id, {
-      slug: p.siteSlug!, baseUrl: base, avoid, timeoutMs: 20_000, deadlineMs: 26_000,
+      slug: p.siteSlug!, baseUrl: base, avoid, avoidStyles: styleGuides, timeoutMs: 20_000, deadlineMs: 26_000,
     });
     let v7 = await build();
     const collisions = editorialCollisions(v7.spec, avoid);

@@ -5,18 +5,19 @@ import {
   ENGINE_MARKER,
   buildEngineSheet,
   buildSiteV7,
+  createSpecLlm,
   imagesFromBundle,
   renderEngineBundle,
   renderRefreshedBundleV7,
 } from "./_lib/coder-engine.ts";
 import { isStaleSiteBundle } from "./_lib/bundle.ts";
-import { specFixture, specSheet } from "./spec-fixture.ts";
+import { premiumSpecFixture, specFixture, specSheet } from "./spec-fixture.ts";
 
 let fail = 0;
 const check = (n: string, c: boolean) => { if (!c) { fail++; console.log("FAIL", n); } else console.log("ok  ", n); };
 
 const sheet: Record<string, string> = { ...specSheet, PHONE_LINK: "+1 469-555-3810" };
-const llmOk = async () => JSON.stringify(specFixture);
+const llmOk = async () => JSON.stringify(premiumSpecFixture);
 const fetchImg = (async () =>
   new Response(new Uint8Array(20_000).fill(7), {
     status: 200,
@@ -72,7 +73,9 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
 
 {
   check("build: engine = site-engine", built.engine === "site-engine");
-  check("build: spec validée (metaTitle)", built.spec.metaTitle === specFixture.metaTitle);
+  check("build: spec validée (metaTitle)", built.spec.metaTitle === premiumSpecFixture.metaTitle);
+  check("build: design guide", built.spec.design?.styleGuide === "calendly-navy");
+  check("build: guide + motion rendus", home.includes('data-guide="calendly-navy"') && home.includes("ScrollTrigger"));
   check("build: index non vide", home.length > 5_000);
   check("build: marqueur moteur v7", home.includes(ENGINE_MARKER));
   check("build: formulaire câblé", home.includes("api/site-form/42"));
@@ -81,7 +84,7 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   check("build: og-image déterministe", home.includes("https://test-shop.gosite.digital/og-image.svg"));
   check("build: assets déterministes", Boolean(built.bundle["favicon.svg"] && built.bundle["og-image.svg"]));
   check("build: 14 fichiers texte", textFiles.length === 14);
-  check("build: pages services", specFixture.servicePages.every((s) => Boolean(built.bundle[`services/${s.slug}.html`])));
+  check("build: pages services", premiumSpecFixture.servicePages.every((s) => Boolean(built.bundle[`services/${s.slug}.html`])));
   check("build: pages fixes", ["about.html", "privacy.html", "terms.html", "404.html"].every((f) => Boolean(built.bundle[f])));
   check("build: sitemap/robots/manifest/vercel", ["sitemap.xml", "robots.txt", "site.webmanifest", "vercel.json"].every((f) => Boolean(built.bundle[f])));
   check("build: images locales embarquées (hero)", Boolean(built.bundle["images/hero.jpg"]));
@@ -91,6 +94,18 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   check("build: aucune URL relative d'image sur la home", !home.includes('src="images/'));
   check("build: bundle v7 non obsolète", isStaleSiteBundle(built.bundle, null) === false);
   check("build: html v7 non obsolète", isStaleSiteBundle(null, home) === false);
+}
+
+// ── Variété des guides : avoidStyles transmis au prompt ─────────────────────
+{
+  let captured = "";
+  await buildSiteV7(sheet, 43, {
+    slug: "variety-shop",
+    llm: async (p) => { captured = p.user; return JSON.stringify(premiumSpecFixture); },
+    fetchImpl: fetchImg,
+    avoidStyles: ["craft-scrapbook", "basis-technical"],
+  });
+  check("build: avoidStyles dans le prompt", captured.includes("craft-scrapbook") && captured.includes("basis-technical"));
 }
 
 // ── Re-rendu domaine (Deployer / Domainner) ─────────────────────────────────
@@ -190,6 +205,50 @@ const textFiles = Object.keys(built.bundle).filter((k) => !k.startsWith("images/
   check("stale: html v6 complet reconnu", isStaleSiteBundle(null, v6) === false);
   check("stale: bundle sans marqueurs rejeté", isStaleSiteBundle({ "index.html": "<html></html>" }, null) === true);
   check("stale: html vide rejeté", isStaleSiteBundle(null, "") === true);
+}
+
+// ── Backend LLM : Gemini d'abord, omniroute (Nemotron) en repli ──────────────
+{
+  const llm = createSpecLlm({
+    geminiConfigured: async () => true,
+    geminiCall: async () => "gemini-ok",
+    llmConfigured: async () => true,
+    chat: async () => "omniroute-ok",
+  }, { timeoutMs: 1000 });
+  const out = await llm({ system: "s", user: "u", maxTokens: 100, temperature: 0.7, jsonMode: true });
+  check("llm: Gemini prioritaire quand configuré", out === "gemini-ok");
+}
+{
+  let chats = 0;
+  const llm = createSpecLlm({
+    geminiConfigured: async () => true,
+    geminiCall: async () => null,
+    llmConfigured: async () => true,
+    chat: async () => { chats++; return "omniroute-ok"; },
+  }, { timeoutMs: 1000 });
+  const out = await llm({ system: "s", user: "u", maxTokens: 100, temperature: 0.7, jsonMode: true });
+  check("llm: repli omniroute si Gemini échoue", out === "omniroute-ok" && chats === 1);
+}
+{
+  let chats = 0;
+  const llm = createSpecLlm({
+    geminiConfigured: async () => false,
+    geminiCall: async () => "jamais",
+    llmConfigured: async () => true,
+    chat: async () => { chats++; return "nemotron-ok"; },
+  }, { timeoutMs: 1000 });
+  const out = await llm({ system: "s", user: "u", maxTokens: 100, temperature: 0.7, jsonMode: true });
+  check("llm: Nemotron utilisé si Gemini non configuré", out === "nemotron-ok" && chats === 1);
+}
+{
+  const llm = createSpecLlm({
+    geminiConfigured: async () => false,
+    geminiCall: async () => null,
+    llmConfigured: async () => false,
+    chat: async () => "jamais",
+  }, {});
+  const out = await llm({ system: "s", user: "u", maxTokens: 100, temperature: 0.7, jsonMode: true });
+  check("llm: null si aucun backend", out === null);
 }
 
 console.log(fail ? `\n${fail} échec(s)` : "\nOK");

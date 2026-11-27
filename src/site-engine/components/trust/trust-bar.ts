@@ -9,10 +9,10 @@ export function trustBar(section: Trust, _sheet: ClientSheet, _spec: SiteSpec): 
   return `${sectionOpen("section-trust", "trust")}
   <div class="container">
     ${section.title ? `<p class="trust-title reveal">${escapeHtml(section.title)}</p>` : ""}
-    <div class="trust-bar reveal">
+    <div class="trust-bar">
       ${section.items
         .map(
-          (i) => `<div class="trust-item">
+          (i) => `<div class="trust-item reveal">
         <span class="trust-value">${escapeHtml(i.value)}</span>
         <span class="trust-label">${escapeHtml(i.label)}</span>
       </div>`,

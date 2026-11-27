@@ -1,6 +1,6 @@
 # Design — v7 premium : DesignSpec, 7 directions artistiques et motion GSAP
 
-Date : 2026-11-21 · Statut : en approbation
+Date : 2026-11-21 · Statut : implémenté
 
 ## Intention et pourquoi
 
@@ -25,7 +25,7 @@ les sections respirent et s'animent ; le site reste propre sans JS et avec `pref
   rayons, textures, traitements de cartes/images, variantes de hero).
 - Ajouter un hero **immersif plein écran** (image, overlay, kicker, H1, sous-titre, deux CTA,
   chips de confiance, indicateur de scroll).
-- Ajouter une couche **GSAP + ScrollTrigger** via CDN, avec repli `IntersectionObserver`, respect
+- Ajouter une couche **GSAP + ScrollTrigger** via CDN, avec repli `revealAll()`, respect
   de `prefers-reduced-motion`, zéro scroll-jacking et zéro dépendance npm dans le bundle généré.
 - Animer le hero, les révélations de sections, les cartes, la galerie et le header.
 - Conserver le rendu des anciens `SiteSpec` sans `design` (rétrocompatibilité).
@@ -156,7 +156,7 @@ manifest, les JSON-LD et le `<meta name="theme-color">`.
 - Ajoute les 7 `promptBrief` au system prompt, avec la règle « un seul guide, aucune mixture ».
 - Le LLM doit remplir `design` (`styleGuide`, `hero`, `motion`, `paletteMode: "guide"`) et mettre
   `hero.style = "immersive"`, avec un `secondaryCta` obligatoire.
-- Retry de validation si `design` absent, guide inconnu, hero non autorisé,
+- Retry de validation si `design` absent, guide inconnu, `paletteMode !== "guide"`, hero non autorisé,
   `hero.style !== "immersive"` ou `secondaryCta` manquant.
 - Conserve les règles existantes : hero/services/contact/FAQ obligatoires, galerie si photos,
   `servicePages` 3–6, zéro fait inventé.
@@ -228,15 +228,16 @@ Les icônes de service restent déterministes : nouveau mapping SVG inline dans
      - timeline du hero : stagger des `[data-hero-item]`, scale de l'image ;
      - parallaxe légère de l'image du hero au scroll ;
      - `ScrollTrigger.batch` sur `.reveal` et les cibles de cartes/galerie ;
-     - ombre du header après 40 px ;
+     - ombre du header après 24 px ;
      - `ScrollTrigger.refresh()` au `load` et après 300 ms ;
-  4. sinon → repli `IntersectionObserver` existant, qui révèle `.reveal` sans dépendance ;
+  4. sinon → repli immédiat `revealAll()`, qui révèle `.reveal` sans dépendance ;
   5. en cas d'erreur JS → révèle tout, ne laisse jamais une section invisible.
 - Intensité lue depuis `data-motion` :
   - `subtle` : distances 16–24 px, durées 0.6–0.8 s, pas de parallaxe agressive ;
   - `balanced` : distances 24–40 px, durées 0.8–1.0 s, parallaxe douce ;
   - `expressive` : distances 40–64 px, durées 0.9–1.2 s, stagger marqué, scale/clip contenu.
 - Uniquement `transform` et `opacity` ; pas de scroll-jacking, pas de pin, pas de compteurs.
+- Timeout de sécurité : si un script `defer` reste bloqué et retarde `DOMContentLoaded`, `revealAll()` est appelé après 2,5 s pour ne jamais laisser le contenu masqué.
 
 ### 8. Hooks d'animation dans les composants
 
@@ -257,6 +258,7 @@ Les icônes de service restent déterministes : nouveau mapping SVG inline dans
   `current.design` avant validation finale (jamais de downgrade silencieux vers legacy).
 - Si le client demande explicitement une couleur, l'éditeur met `paletteMode: "brand"` et la
   nouvelle palette ; sinon le mode reste `"guide"`.
+- Toute palette modifiée par le LLM sans `paletteMode: "brand"` est normalisée en `"brand"` : une édition de couleur ne peut pas être annulée silencieusement par le guide.
 - Test dédié : une édition de texte ne fait pas perdre le guide, le hero ni le motion.
 
 ### 10. Rétrocompatibilité et déploiement
@@ -278,7 +280,7 @@ Les icônes de service restent déterministes : nouveau mapping SVG inline dans
   - CSS du guide contient `data-guide` et pas les autres guides.
 - `tests/render-components.test.ts` / nouveau `tests/render-premium.test.ts` :
   - hero immersif : `100svh`, image eager, deux CTA, scroll cue, `data-hero-item` ;
-  - `html[data-guide]`, `data-motion`, CDN GSAP/ScrollTrigger, fallback `IntersectionObserver` ;
+  - `html[data-guide]`, `data-motion`, CDN GSAP/ScrollTrigger, fallback `revealAll()` ;
   - `prefers-reduced-motion` présent ;
   - zéro image externe, zéro `http://` ;
   - aucune section masquée sans JS.
@@ -311,7 +313,7 @@ Les icônes de service restent déterministes : nouveau mapping SVG inline dans
 
 ## Risques et parades
 
-- **CDN indisponible** → repli `IntersectionObserver`, contenu visible.
+- **CDN indisponible** → repli `revealAll()`, contenu visible.
 - **FOUC / sections invisibles** → `has-js` posé tôt, révélations idempotentes, try/catch global.
 - **Palette de marque écrasée** → priorité aux couleurs de fiche, test dédié.
 - **Prompt trop long / timeouts Gemini** → briefs de guide compacts, sortie JSON inchangée.

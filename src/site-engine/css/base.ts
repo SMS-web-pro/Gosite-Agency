@@ -32,14 +32,19 @@ section[id]{scroll-margin-top:84px}
    le contenu reste visible avec JS désactivé). */
 html.has-js .reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s ease}
 html.has-js .reveal.is-visible{opacity:1;transform:none}
-@media (prefers-reduced-motion: reduce){html.has-js .reveal{opacity:1;transform:none;transition:none}}
+html.has-js .hero-immersive [data-anim]{opacity:0;transform:translateY(22px);transition:opacity .7s ease,transform .7s ease}
+html.has-js .hero-immersive [data-anim].is-visible{opacity:1;transform:none}
+@media (prefers-reduced-motion: reduce){
+  html.has-js .reveal,
+  html.has-js .hero-immersive [data-anim]{opacity:1!important;transform:none!important;transition:none!important}
+}
 /* Dégradés de repli quand une image ne charge pas (onerror masque l'img). */
 .hero-media,.hero-bg,.about-media,.gallery-item{background:linear-gradient(135deg,color-mix(in srgb,var(--color-primary) 82%,#000) 0%,var(--color-primary) 45%,var(--color-accent) 100%)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;padding:.85rem 1.6rem;border-radius:var(--radius-full);font-family:var(--font-heading);font-weight:700;font-size:.95rem;letter-spacing:.01em;line-height:1;border:2px solid transparent;cursor:pointer;transition:transform var(--transition-fast),box-shadow var(--transition-fast),background-color var(--transition-fast),border-color var(--transition-fast);text-decoration:none;white-space:nowrap}
 .btn:hover{text-decoration:none;transform:translateY(-2px)}
 .btn:active{transform:translateY(0)}
-.btn-accent{background:var(--color-accent);color:#fff;box-shadow:var(--shadow-md)}
-.btn-accent:hover{background:color-mix(in srgb,var(--color-accent) 85%,#000);color:#fff;box-shadow:var(--shadow-lg)}
+.btn-accent{background:var(--color-accent-ui,var(--color-accent));color:var(--color-on-accent,#fff);box-shadow:var(--shadow-md)}
+.btn-accent:hover{background:var(--color-accent-ui,var(--color-accent));color:var(--color-on-accent,#fff);box-shadow:var(--shadow-lg)}
 .btn-primary{background:var(--color-primary);color:var(--color-text-light);box-shadow:var(--shadow-md)}
 .btn-primary:hover{background:color-mix(in srgb,var(--color-primary) 85%,#000);color:var(--color-text-light);box-shadow:var(--shadow-lg)}
 .btn-ghost{border-color:color-mix(in srgb,var(--color-text) 25%,transparent);color:var(--color-text);background:transparent}

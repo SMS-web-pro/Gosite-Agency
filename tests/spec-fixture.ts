@@ -127,6 +127,12 @@ export const specFixture = {
   ogDescription: "Une équipe de plombiers licenciés à Dallas, disponible sept jours sur sept.",
 };
 
+export const premiumSpecFixture = {
+  ...specFixture,
+  design: { styleGuide: "calendly-navy" as const, hero: "immersive-full" as const, motion: "balanced" as const, paletteMode: "guide" as const },
+  homeSections: specFixture.homeSections.map((s) => s.type === "hero" ? { ...s, style: "immersive" as const, eyebrow: "Plomberie premium" } : s),
+};
+
 export const specSheet: Record<string, string> = {
   BUSINESS_NAME: "Test Co",
   BUSINESS_TYPE: "plumbing",

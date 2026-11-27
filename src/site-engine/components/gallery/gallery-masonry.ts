@@ -7,7 +7,7 @@ type Gallery = Extract<HomeSection, { type: "gallery" }>;
 
 /** Image de galerie pour l'index n — repli sur le dégradé du parent. */
 function figure(caption: string, src: string | undefined, cls: string): string {
-  return `<figure class="gallery-item ${cls}">
+  return `<figure class="gallery-item ${cls} reveal">
         ${imgTag(src, caption)}
         <figcaption>${escapeHtml(caption)}</figcaption>
       </figure>`;

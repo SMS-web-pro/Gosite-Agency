@@ -23,11 +23,12 @@ check("résultat toujours dans les 24h", nextPacificMidnight(Date.UTC(2026, 10, 
 
 // ── pickKeyOrder (rotation + quarantine) ──
 const K = ["a@a1", "b@b2", "c@c3"];
-check("toutes dispo, ordre de départ 0", JSON.stringify(pickKeyOrder(K, {}, Date.now(), 0)) === JSON.stringify(K));
+const now = Date.now();
+check("toutes dispo, ordre de départ 0", JSON.stringify(pickKeyOrder(K, {}, now, 0)) === JSON.stringify(K));
 check("rotation départ 1", JSON.stringify(pickKeyOrder(K, {}, 0, 1)) === '["b@b2","c@c3","a@a1"]');
-check("clé en quarantine écartée", JSON.stringify(pickKeyOrder(K, { "a@a1": Date.now() + 99999 }, Date.now(), 0)) === '["b@b2","c@c3"]');
-check("quarantine expirée réintégrée", JSON.stringify(pickKeyOrder(K, { "a@a1": Date.now() - 1 }, Date.now(), 0)) === JSON.stringify(K));
-check("toutes en quarantine -> []", JSON.stringify(pickKeyOrder(K, { "a@a1": Date.now() + 1, "b@b2": Date.now() + 1, "c@c3": Date.now() + 1 }, Date.now(), 0)) === "[]");
-check("liste vide -> []", JSON.stringify(pickKeyOrder([], {}, Date.now(), 0)) === "[]");
+check("clé en quarantine écartée", JSON.stringify(pickKeyOrder(K, { "a@a1": now + 99999 }, now, 0)) === '["b@b2","c@c3"]');
+check("quarantine expirée réintégrée", JSON.stringify(pickKeyOrder(K, { "a@a1": now - 1 }, now, 0)) === JSON.stringify(K));
+check("toutes en quarantine -> []", JSON.stringify(pickKeyOrder(K, { "a@a1": now + 60000, "b@b2": now + 60000, "c@c3": now + 60000 }, now, 0)) === "[]");
+check("liste vide -> []", JSON.stringify(pickKeyOrder([], {}, now, 0)) === "[]");
 
 process.exit(fail ? 1 : 0);
